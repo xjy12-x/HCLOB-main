@@ -1,8 +1,9 @@
-import torch
-import torch.nn as nn
 import math
 
-'''
+import torch
+import torch.nn as nn
+
+"""
 来自于AAAI 2025 顶会    持续分享顶会顶刊模块，助力交流群里小伙伴高效去发小论文，顺利毕业！！！
 
 即插即用模块： DRM 防御优化模块  特征优化模块/特征增强模块 （大家有没有发现顶会论文的模块取名都很有意思！）
@@ -24,14 +25,20 @@ import math
 
 适用于：目标检测，图像融合，图像分割，语义分割，遥感图像任务，超分辨率图像，图像恢复，暗光增强等所有计算机视觉CV任务通用的即插即用模块。
 
-'''
+"""
+
+
 class PatchEmbed(nn.Module):
-    def __init__(self, ):
+    def __init__(
+        self,
+    ):
         super().__init__()
 
     def forward(self, x):
         x = x.flatten(2).transpose(1, 2)
         return x
+
+
 class PatchUnEmbed(nn.Module):
     def __init__(self, in_chans=3, embed_dim=96):
         super().__init__()
@@ -39,20 +46,20 @@ class PatchUnEmbed(nn.Module):
         self.embed_dim = embed_dim
 
     def forward(self, x, x_size):
-        B, HW, C = x.shape
+        B, _HW, _C = x.shape
         x = x.transpose(1, 2).view(B, self.embed_dim, x_size[0], x_size[1])
         return x
 
-#ARB
-class ESSAttn(nn.Module):
 
+# ARB
+class ESSAttn(nn.Module):
     def __init__(self, dim):
         super().__init__()
         self.lnqkv = nn.Linear(dim, dim * 3)
         self.ln = nn.Linear(dim, dim)
 
     def forward(self, x):
-        b, N, C = x.shape
+        _b, N, C = x.shape
         qkv = self.lnqkv(x)
         qkv = torch.split(qkv, C, 2)
         q, k, v = qkv[0], qkv[1], qkv[2]
@@ -81,6 +88,7 @@ class ESSAttn(nn.Module):
                     return False
         return True
 
+
 class Downsample(nn.Sequential):
     def __init__(self, scale, num_feat):
         m = []
@@ -92,8 +100,10 @@ class Downsample(nn.Sequential):
             m.append(nn.Conv2d(num_feat, num_feat // 9, 3, 1, 1))
             m.append(nn.PixelUnshuffle(3))
         else:
-            raise ValueError(f'scale {scale} is not supported. ' 'Supported scales: 2^n and 3.')
-        super(Downsample, self).__init__(*m)
+            raise ValueError(f"scale {scale} is not supported. Supported scales: 2^n and 3.")
+        super().__init__(*m)
+
+
 class Upsample(nn.Sequential):
     def __init__(self, scale, num_feat):
         m = []
@@ -105,19 +115,24 @@ class Upsample(nn.Sequential):
             m.append(nn.Conv2d(num_feat, 9 * num_feat, 3, 1, 1))
             m.append(nn.PixelShuffle(3))
         else:
-            raise ValueError(f'scale {scale} is not supported. ' 'Supported scales: 2^n and 3.')
-        super(Upsample, self).__init__(*m)
+            raise ValueError(f"scale {scale} is not supported. Supported scales: 2^n and 3.")
+        super().__init__(*m)
+
+
 class Convdown(nn.Module):
     def __init__(self, dim):
         super().__init__()
         self.patch_embed = PatchEmbed()
         self.patch_unembed = PatchUnEmbed(embed_dim=dim)
-        self.convd = nn.Sequential(nn.Conv2d(dim * 2, dim * 2, 1, 1, 0), nn.LeakyReLU(negative_slope=0.2, inplace=True),
-                                   nn.Dropout2d(0.2),
-                                   nn.Conv2d(dim * 2, dim * 2, 3, 1, 1),
-                                   nn.LeakyReLU(negative_slope=0.2, inplace=True),
-                                   nn.Dropout2d(0.2),
-                                   nn.Conv2d(dim * 2, dim, 1, 1, 0))
+        self.convd = nn.Sequential(
+            nn.Conv2d(dim * 2, dim * 2, 1, 1, 0),
+            nn.LeakyReLU(negative_slope=0.2, inplace=True),
+            nn.Dropout2d(0.2),
+            nn.Conv2d(dim * 2, dim * 2, 3, 1, 1),
+            nn.LeakyReLU(negative_slope=0.2, inplace=True),
+            nn.Dropout2d(0.2),
+            nn.Conv2d(dim * 2, dim, 1, 1, 0),
+        )
 
         self.attn = ESSAttn(dim)
         self.norm = nn.LayerNorm(dim)
@@ -133,17 +148,22 @@ class Convdown(nn.Module):
         x = self.convd(x)
         x = x + shortcut
         return x
+
+
 class Convup(nn.Module):
     def __init__(self, dim):
         super().__init__()
         self.patch_embed = PatchEmbed()
         self.patch_unembed = PatchUnEmbed(embed_dim=dim)
-        self.convu = nn.Sequential(nn.Conv2d(dim * 2, dim * 2, 1, 1, 0), nn.LeakyReLU(negative_slope=0.2, inplace=True),
-                                   nn.Dropout2d(0.2),
-                                   nn.Conv2d(dim * 2, dim * 2, 3, 1, 1),
-                                   nn.LeakyReLU(negative_slope=0.2, inplace=True),
-                                   nn.Dropout2d(0.2),
-                                   nn.Conv2d(dim * 2, dim, 1, 1, 0))
+        self.convu = nn.Sequential(
+            nn.Conv2d(dim * 2, dim * 2, 1, 1, 0),
+            nn.LeakyReLU(negative_slope=0.2, inplace=True),
+            nn.Dropout2d(0.2),
+            nn.Conv2d(dim * 2, dim * 2, 3, 1, 1),
+            nn.LeakyReLU(negative_slope=0.2, inplace=True),
+            nn.Dropout2d(0.2),
+            nn.Conv2d(dim * 2, dim, 1, 1, 0),
+        )
         self.drop = nn.Dropout2d(0.2)
         self.norm = nn.LayerNorm(dim)
         self.attn = ESSAttn(dim)
@@ -158,9 +178,11 @@ class Convup(nn.Module):
         x = self.convu(x)
         x = x + shortcut
         return x
+
+
 class DRM(nn.Module):
     def __init__(self, dim, upscale=1):
-        super(DRM, self).__init__()
+        super().__init__()
         self.convup = Convup(dim)
         self.convdown = Convdown(dim)
         self.convupsample = Upsample(scale=upscale, num_feat=dim)
@@ -168,9 +190,9 @@ class DRM(nn.Module):
 
     def forward(self, x):
         xup = self.convupsample(x)
-        x1 = self.convup(xup) # 就是图中的A注意力模块
+        x1 = self.convup(xup)  # 就是图中的A注意力模块
         xdown = self.convdownsample(x1) + x
-        x2 = self.convdown(xdown) #就是图中的A注意力模块
+        x2 = self.convdown(xdown)  # 就是图中的A注意力模块
         xup = self.convupsample(x2) + x1
         x3 = self.convup(xup)
         xdown = self.convdownsample(x3) + x2
@@ -179,11 +201,11 @@ class DRM(nn.Module):
         x5 = self.convup(xup)
         return x5
 
+
 # 输入 N C H W,  输出 N C H W
-if __name__ == '__main__':
+if __name__ == "__main__":
     input = torch.rand(1, 64, 128, 128)
     drm = DRM(64)
     output = drm(input)
     print("DRM_input.shape:", input.shape)
-    print("DRM_output.shape:",output.shape)
-
+    print("DRM_output.shape:", output.shape)
