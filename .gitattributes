@@ -1,0 +1,4 @@
+*.pth filter=lfs diff=lfs merge=lfs -text
+*.tar.gz filter=lfs diff=lfs merge=lfs -text
+run/cache/*.pth filter=lfs diff=lfs merge=lfs -text
+run/cache/*.tar.gz filter=lfs diff=lfs merge=lfs -text
