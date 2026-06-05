@@ -1,14 +1,14 @@
+import math
+
 import torch
 import torch.nn as nn
 from timm.models.layers import trunc_normal_
-import math
-from thop import clever_format, profile
 
 
 # Feature Rectify Module
 class ChannelWeights(nn.Module):
     def __init__(self, dim, reduction=1):
-        super(ChannelWeights, self).__init__()
+        super().__init__()
         self.dim = dim
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
         self.max_pool = nn.AdaptiveMaxPool2d(1)
@@ -16,10 +16,11 @@ class ChannelWeights(nn.Module):
             nn.Linear(self.dim * 6, self.dim * 6 // reduction),
             nn.ReLU(inplace=True),
             nn.Linear(self.dim * 6 // reduction, self.dim * 2),
-            nn.Sigmoid())
+            nn.Sigmoid(),
+        )
 
     def forward(self, x1, x2):
-        B, _, H, W = x1.shape
+        B, _, _H, _W = x1.shape
         x = torch.cat((x1, x2), dim=1)
         avg = self.avg_pool(x).view(B, self.dim * 2)
         std = torch.std(x, dim=(2, 3), keepdim=True).view(B, self.dim * 2)
@@ -32,13 +33,14 @@ class ChannelWeights(nn.Module):
 
 class SpatialWeights(nn.Module):
     def __init__(self, dim, reduction=1):
-        super(SpatialWeights, self).__init__()
+        super().__init__()
         self.dim = dim
         self.mlp = nn.Sequential(
             nn.Conv2d(self.dim * 2, self.dim // reduction, kernel_size=1),
             nn.ReLU(inplace=True),
             nn.Conv2d(self.dim // reduction, 2, kernel_size=1),
-            nn.Sigmoid())
+            nn.Sigmoid(),
+        )
 
     def forward(self, x1, x2):
         B, _, H, W = x1.shape
@@ -47,13 +49,10 @@ class SpatialWeights(nn.Module):
         return spatial_weights
 
 
-
-
-
 # 先空间校正再通道校正
 class FCM(nn.Module):
     def __init__(self, dim, reduction=1, eps=1e-8):
-        super(FCM, self).__init__()
+        super().__init__()
         # 自定义可训练权重参数
         self.weights = nn.Parameter(torch.ones(2, dtype=torch.float32), requires_grad=True)
         self.eps = eps
@@ -65,7 +64,7 @@ class FCM(nn.Module):
     @classmethod
     def _init_weights(cls, m):
         if isinstance(m, nn.Linear):
-            trunc_normal_(m.weight, std=.02)
+            trunc_normal_(m.weight, std=0.02)
             if isinstance(m, nn.Linear) and m.bias is not None:
                 nn.init.constant_(m.bias, 0)
         elif isinstance(m, nn.LayerNorm):
@@ -79,7 +78,7 @@ class FCM(nn.Module):
                 m.bias.data.zero_()
 
     def forward(self, x1):
-        x2=x1
+        x2 = x1
         weights = nn.ReLU()(self.weights)
         fuse_weights = weights / (torch.sum(weights, dim=0) + self.eps)
 
@@ -91,18 +90,18 @@ class FCM(nn.Module):
 
         main_out = x1_1 + fuse_weights[1] * channel_weights[1] * x2_1
         aux_out = x2_1 + fuse_weights[1] * channel_weights[0] * x1_1
-        return main_out+aux_out
+        return main_out + aux_out
 
 
 class CrossAttention(nn.Module):
     def __init__(self, dim, num_heads=8, sr_ratio=1, qkv_bias=False, qk_scale=None):
-        super(CrossAttention, self).__init__()
+        super().__init__()
         assert dim % num_heads == 0, f"dim {dim} should be divided by num_heads {num_heads}."
 
         self.dim = dim
         self.num_heads = num_heads
         head_dim = dim // num_heads
-        self.scale = qk_scale or head_dim ** -0.5
+        self.scale = qk_scale or head_dim**-0.5
 
         self.q1 = nn.Linear(dim, dim, bias=qkv_bias)
         self.kv1 = nn.Linear(dim, dim * 2, bias=qkv_bias)
@@ -187,21 +186,28 @@ class FeatureInteraction(nn.Module):
 
 class ChannelEmbed(nn.Module):
     def __init__(self, in_channels, out_channels, reduction=1, norm_layer=nn.BatchNorm2d):
-        super(ChannelEmbed, self).__init__()
+        super().__init__()
         self.out_channels = out_channels
         self.residual = nn.Conv2d(in_channels, out_channels, kernel_size=1, bias=False)
         self.channel_embed = nn.Sequential(
             nn.Conv2d(in_channels, out_channels // reduction, kernel_size=1, bias=True),
-            nn.Conv2d(out_channels // reduction, out_channels // reduction, kernel_size=3, stride=1, padding=1,
-                      bias=True, groups=out_channels // reduction),
+            nn.Conv2d(
+                out_channels // reduction,
+                out_channels // reduction,
+                kernel_size=3,
+                stride=1,
+                padding=1,
+                bias=True,
+                groups=out_channels // reduction,
+            ),
             nn.ReLU(inplace=True),
             nn.Conv2d(out_channels // reduction, out_channels, kernel_size=1, bias=True),
-            norm_layer(out_channels)
+            norm_layer(out_channels),
         )
         self.norm = norm_layer(out_channels)
 
     def forward(self, x, H, W):
-        B, N, _C = x.shape
+        B, _N, _C = x.shape
         x = x.permute(0, 2, 1).reshape(B, _C, H, W).contiguous()
         residual = self.residual(x)
         x = self.channel_embed(x)
@@ -210,19 +216,19 @@ class ChannelEmbed(nn.Module):
         return out
 
 
-
 class FeatureFusion(nn.Module):
     def __init__(self, dim, reduction=1, sr_ratio=4, num_heads=4, norm_layer=nn.BatchNorm2d):
         super().__init__()
         self.cross = FeatureInteraction(dim=dim, reduction=reduction, num_heads=num_heads, sr_ratio=sr_ratio)
-        self.channel_emb = ChannelEmbed(in_channels=dim * 2, out_channels=dim, reduction=reduction,
-                                        norm_layer=norm_layer)
+        self.channel_emb = ChannelEmbed(
+            in_channels=dim * 2, out_channels=dim, reduction=reduction, norm_layer=norm_layer
+        )
         self.apply(self._init_weights)
 
     @classmethod
     def _init_weights(cls, m):
         if isinstance(m, nn.Linear):
-            trunc_normal_(m.weight, std=.02)
+            trunc_normal_(m.weight, std=0.02)
             if isinstance(m, nn.Linear) and m.bias is not None:
                 nn.init.constant_(m.bias, 0)
         elif isinstance(m, nn.LayerNorm):
@@ -236,8 +242,8 @@ class FeatureFusion(nn.Module):
                 m.bias.data.zero_()
 
     def forward(self, x1):
-        x2=x1
-        B, C, H, W = x1.shape
+        x2 = x1
+        _B, _C, H, W = x1.shape
         # B C (HW)->B N(HW) C
         x1 = x1.flatten(2).transpose(1, 2)
         x2 = x2.flatten(2).transpose(1, 2)
@@ -249,16 +255,16 @@ class FeatureFusion(nn.Module):
         fuse = self.channel_emb(fuse, H, W)
         return fuse
 
-if __name__ == '__main__':
+
+if __name__ == "__main__":
     ffm = FeatureFusion(64).cuda()
     left = torch.randn(1, 64, 64, 64).cuda()
     right = torch.randn(1, 64, 64, 64).cuda()
     out1 = ffm(left, right)
-    print('Ai缝合即插即用模块永久更新-FFM_Input size:', left.size())  # 打印输入张量的形状
-    print('Ai缝合即插即用模块永久更新-FFM_Output size:', out1.size())  # 打印输出张量的形状
+    print("Ai缝合即插即用模块永久更新-FFM_Input size:", left.size())  # 打印输入张量的形状
+    print("Ai缝合即插即用模块永久更新-FFM_Output size:", out1.size())  # 打印输出张量的形状
 
-    fcm =  FCM(64).cuda()
+    fcm = FCM(64).cuda()
     out2 = ffm(left, right)
-    print('Ai缝合即插即用模块永久更新-FCM_Input size:', left.size())  # 打印输入张量的形状
-    print('Ai缝合即插即用模块永久更新-FCM_Output size:', out2.size())  # 打印输出张量的形状
-
+    print("Ai缝合即插即用模块永久更新-FCM_Input size:", left.size())  # 打印输入张量的形状
+    print("Ai缝合即插即用模块永久更新-FCM_Output size:", out2.size())  # 打印输出张量的形状
