@@ -1,25 +1,25 @@
 import os
 import sys
-import argparse
 
 import torch
-from torch import nn
-import torch.distributed as dist
 import torch.backends.cudnn as cudnn
-from torchvision import datasets
-from torchvision import transforms
-from torchvision import models
-from utils.options import parse_args_knn
+import torch.distributed as dist
 import utils.utils as utils
+from torch import nn
+from torchvision import datasets, models, transforms
+from utils.options import parse_args_knn
+
 
 def extract_feature_pipeline(args):
     # ============ preparing data ... ============
-    transform = transforms.Compose([
-        transforms.Resize(256, interpolation=3),
-        transforms.CenterCrop(224),
-        transforms.ToTensor(),
-        transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
-    ])
+    transform = transforms.Compose(
+        [
+            transforms.Resize(256, interpolation=3),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            transforms.Normalize((0.485, 0.456, 0.406), (0.229, 0.224, 0.225)),
+        ]
+    )
     if args.debug:
         dataset_train = ReturnIndexDataset(os.path.join(args.data, "val"), transform=transform)
     else:
@@ -124,8 +124,15 @@ def extract_features(model, data_loader, use_cuda=True, multiscale=False):
 
 
 @torch.no_grad()
-def knn_classifier(train_features, train_labels, test_features,
-                  test_labels, k, T, num_classes=1000,):
+def knn_classifier(
+    train_features,
+    train_labels,
+    test_features,
+    test_labels,
+    k,
+    T,
+    num_classes=1000,
+):
     top1, top5, total = 0.0, 0.0, 0
     train_features = train_features.t()
     num_test_images, num_chunks = test_labels.shape[0], 100
@@ -133,9 +140,7 @@ def knn_classifier(train_features, train_labels, test_features,
     retrieval_one_hot = torch.zeros(k, num_classes).cuda()
     for idx in range(0, num_test_images, imgs_per_chunk):
         # get the features for test images
-        features = test_features[
-            idx : min((idx + imgs_per_chunk), num_test_images), :
-        ]
+        features = test_features[idx : min((idx + imgs_per_chunk), num_test_images), :]
         targets = test_labels[idx : min((idx + imgs_per_chunk), num_test_images)]
         batch_size = targets.shape[0]
 
@@ -169,17 +174,16 @@ def knn_classifier(train_features, train_labels, test_features,
 
 class ReturnIndexDataset(datasets.ImageFolder):
     def __getitem__(self, idx):
-        img, label = super(ReturnIndexDataset, self).__getitem__(idx)
+        img, _label = super().__getitem__(idx)
         return img, idx
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     args = parse_args_knn()
     utils.init_distributed_mode(args)
-    print("git:\n  {}\n".format(utils.get_sha()))
-    print("\n".join("%s: %s" % (k, str(v)) for k, v in sorted(dict(vars(args)).items())))
+    print(f"git:\n  {utils.get_sha()}\n")
+    print("\n".join(f"{k}: {v!s}" for k, v in sorted(dict(vars(args)).items())))
     cudnn.benchmark = True
-
 
     train_features, test_features, train_labels, test_labels = extract_feature_pipeline(args)
 
@@ -192,7 +196,6 @@ if __name__ == '__main__':
 
         print("Features are ready!\nStart the k-NN classification.")
         for k in args.nb_knn:
-            top1, top5 = knn_classifier(train_features, train_labels,
-                test_features, test_labels, k, args.temperature)
+            top1, top5 = knn_classifier(train_features, train_labels, test_features, test_labels, k, args.temperature)
             print(f"{k}-NN classifier result: Top1: {top1}, Top5: {top5}")
     dist.barrier()
