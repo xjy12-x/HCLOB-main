@@ -1,7 +1,8 @@
 import torch
 import torch.nn as nn
 from einops.layers.torch import Rearrange
-'''
+
+"""
 来自CVPR 2024 顶会 
 即插即用模块：CVIM 跨视图交互模块 （特征融合模块）
 含二次创新模块 EAGFM 有效注意力引导特征融合模块 
@@ -16,11 +17,13 @@ CVIM通过轻量化的跨视图交互机制，高效特征提取和融合左右�
 显著提升图像的超分辨率性能，同时保持低计算复杂度和高效集成能力。
 
 特征融合模块适用于所有计算机视觉CV任务，通用的即插即用模块
-'''
+"""
+
+
 class SpatialAttention(nn.Module):
     def __init__(self):
-        super(SpatialAttention, self).__init__()
-        self.sa = nn.Conv2d(2, 1, 7, padding=3, padding_mode='reflect', bias=True)
+        super().__init__()
+        self.sa = nn.Conv2d(2, 1, 7, padding=3, padding_mode="reflect", bias=True)
 
     def forward(self, x):
         x_avg = torch.mean(x, dim=1, keepdim=True)
@@ -29,9 +32,10 @@ class SpatialAttention(nn.Module):
         sattn = self.sa(x2)
         return sattn
 
+
 class ChannelAttention(nn.Module):
     def __init__(self, dim, reduction=8):
-        super(ChannelAttention, self).__init__()
+        super().__init__()
         self.gap = nn.AdaptiveAvgPool2d(1)
         self.ca = nn.Sequential(
             nn.Conv2d(dim, dim // reduction, 1, padding=0, bias=True),
@@ -43,43 +47,46 @@ class ChannelAttention(nn.Module):
         x_gap = self.gap(x)
         cattn = self.ca(x_gap)
         return cattn
+
+
 class PixelAttention(nn.Module):
     def __init__(self, dim):
-        super(PixelAttention, self).__init__()
-        self.pa2 = nn.Conv2d(2 * dim, dim, 7, padding=3, padding_mode='reflect', groups=dim, bias=True)
+        super().__init__()
+        self.pa2 = nn.Conv2d(2 * dim, dim, 7, padding=3, padding_mode="reflect", groups=dim, bias=True)
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, x, pattn1):
-        B, C, H, W = x.shape
+        _B, _C, _H, _W = x.shape
         x = x.unsqueeze(dim=2)  # B, C, 1, H, W
         pattn1 = pattn1.unsqueeze(dim=2)  # B, C, 1, H, W
         x2 = torch.cat([x, pattn1], dim=2)  # B, C, 2, H, W
-        x2 = Rearrange('b c t h w -> b (c t) h w')(x2)
+        x2 = Rearrange("b c t h w -> b (c t) h w")(x2)
         pattn2 = self.pa2(x2)
         pattn2 = self.sigmoid(pattn2)
         return pattn2
-class CVIM(nn.Module):
 
+
+class CVIM(nn.Module):
     def __init__(self, c):
         super().__init__()
-        self.scale = c ** -0.5
+        self.scale = c**-0.5
 
         self.l_proj1 = nn.Sequential(
             nn.Conv2d(c, c, kernel_size=1, stride=1, padding=0, bias=True),
-            nn.Conv2d(c, c, kernel_size=3, stride=1, padding=1, groups=c, bias=True)
+            nn.Conv2d(c, c, kernel_size=3, stride=1, padding=1, groups=c, bias=True),
         )
         self.r_proj1 = nn.Sequential(
             nn.Conv2d(c, c, kernel_size=1, stride=1, padding=0, bias=True),
-            nn.Conv2d(c, c, kernel_size=3, stride=1, padding=1, groups=c, bias=True)
+            nn.Conv2d(c, c, kernel_size=3, stride=1, padding=1, groups=c, bias=True),
         )
 
         self.l_proj2 = nn.Sequential(
             nn.Conv2d(c, c, kernel_size=1, stride=1, padding=0, bias=True),
-            nn.Conv2d(c, c, kernel_size=3, stride=1, padding=1, groups=c, bias=True)
+            nn.Conv2d(c, c, kernel_size=3, stride=1, padding=1, groups=c, bias=True),
         )
         self.r_proj2 = nn.Sequential(
             nn.Conv2d(c, c, kernel_size=1, stride=1, padding=0, bias=True),
-            nn.Conv2d(c, c, kernel_size=3, stride=1, padding=1, groups=c, bias=True)
+            nn.Conv2d(c, c, kernel_size=3, stride=1, padding=1, groups=c, bias=True),
         )
 
         self.l_proj3 = nn.Conv2d(c, c, kernel_size=1, stride=1, padding=0)
@@ -101,18 +108,19 @@ class CVIM(nn.Module):
         # scale
         F_r2l = self.l_proj3(F_r2l.permute(0, 3, 1, 2))
         F_l2r = self.r_proj3(F_l2r.permute(0, 3, 1, 2))
-        return x_l + F_r2l+x_r + F_l2r
+        return x_l + F_r2l + x_r + F_l2r
+
+
 # 顶会二次创新模块 EAGFM 有效注意力引导融合模块  可以直接去发小论文 冲sci一区和二区  高效发小论文
 # 需要的小伙伴的可以私信我发给你
 
 # 输入 N C H W,  输出 N C H W
-if __name__ == '__main__':
+if __name__ == "__main__":
     input1 = torch.randn(1, 32, 64, 64)
     input2 = torch.randn(1, 32, 64, 64)
     # 初始化CVIM模块并设定通道维度
     CVIM_module = CVIM(32)
-    output =CVIM_module(input1,input2)
+    output = CVIM_module(input1, input2)
     # 输出结果的形状
     print("CVIM_输入张量的形状：", input1.shape)
     print("CVIM_输出张量的形状：", output.shape)
-
