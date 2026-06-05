@@ -1,15 +1,16 @@
 import torch
 import torch.nn as nn
-from torch.nn import functional as F
-from timm.models.layers import DropPath, to_2tuple, trunc_normal_
 from einops.layers.torch import Rearrange
+from timm.models.layers import trunc_normal_
+from torch.nn import functional as F
 
-
-'''
+"""
 来自TGRS 2025顶刊
-'''
+"""
+
+
 class Mlp(nn.Module):
-    def __init__(self, in_features, hidden_features=None, out_features=None, drop=0.):
+    def __init__(self, in_features, hidden_features=None, out_features=None, drop=0.0):
         super().__init__()
         out_features = out_features or in_features
         hidden_features = hidden_features or in_features
@@ -25,6 +26,8 @@ class Mlp(nn.Module):
         x = self.fc2(x)
         x = self.drop(x)
         return x
+
+
 class RelativePosition(nn.Module):
     def __init__(self, num_units, max_relative_position):
         super().__init__()
@@ -32,7 +35,7 @@ class RelativePosition(nn.Module):
         self.max_relative_position = max_relative_position
         self.embeddings_table = nn.Parameter(torch.Tensor(max_relative_position * 2 + 1, num_units))
         nn.init.xavier_uniform_(self.embeddings_table)
-        trunc_normal_(self.embeddings_table, std=.02)
+        trunc_normal_(self.embeddings_table, std=0.02)
 
     def forward(self, length_q, length_k):
         # H, W
@@ -45,9 +48,10 @@ class RelativePosition(nn.Module):
         embeddings = self.embeddings_table[final_mat]
         return embeddings
 
+
 class LMM(nn.Module):
     def __init__(self, channels):
-        super(LMM, self).__init__()
+        super().__init__()
         self.channels = channels
         dim = self.channels
 
@@ -63,7 +67,7 @@ class LMM(nn.Module):
         return x * torch.sigmoid(x)
 
     def forward(self, x):
-        N, C, H, W = x.shape  # 获取输入维度
+        N, C, _H, _W = x.shape  # 获取输入维度
         # 提取方向特征：横向和纵向卷积
         x_w = self.fc_h(x)  # 横向信息
         x_h = self.fc_w(x)  # 纵向信息
@@ -76,11 +80,13 @@ class LMM(nn.Module):
         # 三路加权融合：方向分支和原始输入加权求和
         x_att = x_h * att[0] + x_w * att[1] + x * att[2]
         return x_att  # 输出融合后的局部增强特征
+
+
 class GMM(nn.Module):
     def __init__(self, channels):
-        super(GMM, self).__init__()
-        H=64
-        W=64
+        super().__init__()
+        H = 64
+        W = 64
         self.channels = channels
         patch = 4  # 切片因子
         self.C = int(channels / patch)  # 每块切片的通道数
@@ -124,26 +130,33 @@ class GMM(nn.Module):
         # 融合列方向输出与输入
         x = self.fuse_w(torch.cat([x, x_w], dim=1))
         return x  # 输出全局增强后的特征
+
+
 class PixelAttention(nn.Module):
     def __init__(self, dim):
-        super(PixelAttention, self).__init__()
-        self.pa2 = nn.Conv2d(2 * dim, dim, 7, padding=3, padding_mode='reflect', groups=dim, bias=True)
+        super().__init__()
+        self.pa2 = nn.Conv2d(2 * dim, dim, 7, padding=3, padding_mode="reflect", groups=dim, bias=True)
         self.sigmoid = nn.Sigmoid()
+
     def forward(self, x, pattn1):
-        B, C, H, W = x.shape
+        _B, _C, _H, _W = x.shape
         x = x.unsqueeze(dim=2)  # B, C, 1, H, W
         pattn1 = pattn1.unsqueeze(dim=2)  # B, C, 1, H, W
         x2 = torch.cat([x, pattn1], dim=2)  # B, C, 2, H, W
-        x2 = Rearrange('b c t h w -> b (c t) h w')(x2)
+        x2 = Rearrange("b c t h w -> b (c t) h w")(x2)
         pattn2 = self.pa2(x2)
         pattn2 = self.sigmoid(pattn2)
         return pattn2
-'''二次创新模块:MGLFM 多尺度全局局部特征融合模块'''
+
+
+"""二次创新模块:MGLFM 多尺度全局局部特征融合模块"""
+
+
 class MGLFM(nn.Module):
-    def __init__(self, dim, H,W):
-        super(MGLFM, self).__init__()
+    def __init__(self, dim, H, W):
+        super().__init__()
         self.LLM = LMM(dim)
-        self.GMM = GMM(dim, H,W)
+        self.GMM = GMM(dim, H, W)
         self.pa = PixelAttention(dim)
         self.conv = nn.Conv2d(dim, dim, 1, bias=True)
         self.sigmoid = nn.Sigmoid()
@@ -159,18 +172,19 @@ class MGLFM(nn.Module):
         result = self.conv(result)
         return result
 
+
 # 输入 B C H W,  输出 B C H W
-if __name__ == '__main__':
+if __name__ == "__main__":
     # 定义输入张量的形状为 B, C, H, W
-    input= torch.randn(1, 32, 64, 64)
+    input = torch.randn(1, 32, 64, 64)
     # 创建 GMM 模块
-    gmm = GMM(channels=32,H=64,W=64)
+    gmm = GMM(channels=32, H=64, W=64)
     # 将输入图像传入GMM 模块进行处理
     output = gmm(input)
     # 输出结果的形状
     # 打印输入和输出的形状
-    print('全局混合模块_GMM_input_size:', input.size())
-    print('全局混合模块_GMM_output_size:', output.size())
+    print("全局混合模块_GMM_input_size:", input.size())
+    print("全局混合模块_GMM_output_size:", output.size())
 
     # 创建 LMM 模块
     lmm = LMM(channels=32)
@@ -178,13 +192,13 @@ if __name__ == '__main__':
     output = lmm(input)
     # 输出结果的形状
     # 打印输入和输出的形状
-    print('局部混合模块LMM_input_size:', input.size())
-    print('局部混合模块LMM_output_size:', output.size())
+    print("局部混合模块LMM_input_size:", input.size())
+    print("局部混合模块LMM_output_size:", output.size())
 
-    #二次创新模块MGLFM 多尺度全局局部特征融合模块
-    block = MGLFM(dim=32,H=64,W=64)
+    # 二次创新模块MGLFM 多尺度全局局部特征融合模块
+    block = MGLFM(dim=32, H=64, W=64)
     input1 = torch.rand(1, 32, 64, 64)
     input2 = torch.rand(1, 32, 64, 64)
     output = block(input1, input2)
-    print('二次创新模块—MGLFM_input_size:', input1.size())
-    print('二次创新模块—MGLFM_output_size:', output.size())
+    print("二次创新模块—MGLFM_input_size:", input1.size())
+    print("二次创新模块—MGLFM_output_size:", output.size())

@@ -1,9 +1,7 @@
-from typing import List
+import math
 
 import torch
 import torch.nn as nn
-import math
-
 from mmcv.cnn.bricks import DropPath
 from torch import Tensor
 
@@ -15,6 +13,8 @@ def autopad(k, p=None, d=1):  # kernel, padding, dilation
     if p is None:
         p = k // 2 if isinstance(k, int) else [x // 2 for x in k]  # auto-pad
     return p
+
+
 class Conv(nn.Module):
     """Standard convolution with args(ch_in, ch_out, kernel, stride, padding, groups, dilation, activation)."""
 
@@ -34,6 +34,8 @@ class Conv(nn.Module):
     def forward_fuse(self, x):
         """Perform transposed convolution of 2D data."""
         return self.act(self.conv(x))
+
+
 class DRFD(nn.Module):
     def __init__(self, dim):
         super().__init__()
@@ -61,12 +63,12 @@ class DRFD(nn.Module):
         x = self.fusion(x)  # x = [B, 4C, H/2, W/2]     -->  [B, 2C, H/2, W/2]
 
         return x
+
+
 class Conv_Extra(nn.Module):
     def __init__(self, channel):
-        super(Conv_Extra, self).__init__()
-        self.block = nn.Sequential(Conv(channel, 64, 1),
-                                   Conv(64, 64, 3),
-                                   Conv(64, channel, 1, act=False))
+        super().__init__()
+        self.block = nn.Sequential(Conv(channel, 64, 1), Conv(64, 64, 3), Conv(64, channel, 1, act=False))
 
     def forward(self, x):
         out = self.block(x)
@@ -75,10 +77,18 @@ class Conv_Extra(nn.Module):
 
 class Scharr(nn.Module):
     def __init__(self, channel):
-        super(Scharr, self).__init__()
+        super().__init__()
         # 定义Scharr滤波器
-        scharr_x = torch.tensor([[-3., 0., 3.], [-10., 0., 10.], [-3., 0., 3.]], dtype=torch.float32).unsqueeze(0).unsqueeze(0)
-        scharr_y = torch.tensor([[-3., -10., -3.], [0., 0., 0.], [3., 10., 3.]], dtype=torch.float32).unsqueeze(0).unsqueeze(0)
+        scharr_x = (
+            torch.tensor([[-3.0, 0.0, 3.0], [-10.0, 0.0, 10.0], [-3.0, 0.0, 3.0]], dtype=torch.float32)
+            .unsqueeze(0)
+            .unsqueeze(0)
+        )
+        scharr_y = (
+            torch.tensor([[-3.0, -10.0, -3.0], [0.0, 0.0, 0.0], [3.0, 10.0, 3.0]], dtype=torch.float32)
+            .unsqueeze(0)
+            .unsqueeze(0)
+        )
         self.conv_x = nn.Conv2d(channel, channel, kernel_size=3, padding=1, groups=channel, bias=False)
         self.conv_y = nn.Conv2d(channel, channel, kernel_size=3, padding=1, groups=channel, bias=False)
         # 将Sobel滤波器分配给卷积层
@@ -93,7 +103,7 @@ class Scharr(nn.Module):
         edges_x = self.conv_x(x)
         edges_y = self.conv_y(x)
         # 计算边缘和高斯分布强度（可以选择不同的方式进行融合，这里使用平方和开根号）
-        scharr_edge = torch.sqrt(edges_x ** 2 + edges_y ** 2)
+        scharr_edge = torch.sqrt(edges_x**2 + edges_y**2)
         scharr_edge = self.norm(scharr_edge)
         out = self.conv_extra(x + scharr_edge)
         # show_feature(out)
@@ -111,30 +121,38 @@ class Gaussian(nn.Module):
         self.gaussian.weight.data = gaussian.repeat(dim, 1, 1, 1)
         self.norm = nn.BatchNorm2d(dim)
         self.act = nn.SiLU()
-        if feature_extra == True:
+        if feature_extra:
             self.conv_extra = Conv_Extra(dim)
 
     def forward(self, x):
         edges_o = self.gaussian(x)
         gaussian = self.act(self.norm(edges_o))
-        if self.feature_extra == True:
+        if self.feature_extra:
             out = self.conv_extra(x + gaussian)
         else:
             out = gaussian
         return out
 
     def gaussian_kernel(self, size: int, sigma: float):
-        kernel = torch.FloatTensor([
-            [(1 / (2 * math.pi * sigma ** 2)) * math.exp(-(x ** 2 + y ** 2) / (2 * sigma ** 2))
-             for x in range(-size // 2 + 1, size // 2 + 1)]
-            for y in range(-size // 2 + 1, size // 2 + 1)
-        ]).unsqueeze(0).unsqueeze(0)
+        kernel = (
+            torch.FloatTensor(
+                [
+                    [
+                        (1 / (2 * math.pi * sigma**2)) * math.exp(-(x**2 + y**2) / (2 * sigma**2))
+                        for x in range(-size // 2 + 1, size // 2 + 1)
+                    ]
+                    for y in range(-size // 2 + 1, size // 2 + 1)
+                ]
+            )
+            .unsqueeze(0)
+            .unsqueeze(0)
+        )
         return kernel / kernel.sum()
 
 
 class LFEA(nn.Module):
     def __init__(self, channel):
-        super(LFEA, self).__init__()
+        super().__init__()
         self.channel = channel
         t = int(abs((math.log(channel, 2) + 1) / 2))
         k = t if t % 2 else t + 1
@@ -155,21 +173,20 @@ class LFEA(nn.Module):
         return x
 
 
-class  LEG(nn.Module):
-    def __init__(self,
-                 dim,
-                 stage=1,
-                 mlp_ratio=2,
-                 drop_path=0.1,
-                 ):
+class LEG(nn.Module):
+    def __init__(
+        self,
+        dim,
+        stage=1,
+        mlp_ratio=2,
+        drop_path=0.1,
+    ):
         super().__init__()
         self.stage = stage
-        self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+        self.drop_path = DropPath(drop_path) if drop_path > 0.0 else nn.Identity()
 
         mlp_hidden_dim = int(dim * mlp_ratio)
-        mlp_layer: List[nn.Module] = [
-            Conv(dim, mlp_hidden_dim, 1),
-            nn.Conv2d(mlp_hidden_dim, dim, 1, bias=False)]
+        mlp_layer: list[nn.Module] = [Conv(dim, mlp_hidden_dim, 1), nn.Conv2d(mlp_hidden_dim, dim, 1, bias=False)]
 
         self.mlp = nn.Sequential(*mlp_layer)
         self.LFEA = LFEA(dim)
@@ -189,10 +206,12 @@ class  LEG(nn.Module):
         x_att = self.LFEA(x, att)
         x = x + self.norm(self.drop_path(self.mlp(x_att)))
         return x
+
+
 # 输入 N C H W,  输出 N C H W
-if __name__ == '__main__':
-    models = LEG(dim=32,stage=1).cuda()
+if __name__ == "__main__":
+    models = LEG(dim=32, stage=1).cuda()
     input = torch.randn(1, 32, 64, 64).cuda()
     output = models(input)
-    print('Ai缝合即插即用模块永久更新-LEG input_size:',input.size())
-    print('Ai缝合即插即用模块永久更新-LEG output_size:',output.size())
+    print("Ai缝合即插即用模块永久更新-LEG input_size:", input.size())
+    print("Ai缝合即插即用模块永久更新-LEG output_size:", output.size())

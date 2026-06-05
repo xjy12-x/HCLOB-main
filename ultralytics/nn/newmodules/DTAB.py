@@ -1,10 +1,12 @@
+import numbers
+
+import torch
+import torch.nn as nn
 import torch.nn.functional as F
 from einops import rearrange
-import numbers
-import torch
 from torch import einsum
-import torch.nn as nn
-'''
+
+"""
 来自AAAI 2025顶会
 即插即用模块： DTAB和GCSA  (整合全局与局部特征信息)
 
@@ -32,55 +34,56 @@ DTAB的作用包括：
 DTAB模块通过引入膨胀窗口和通道注意力机制，显著增强了模型的感受野和局部信息聚合能力，相较于先前的BSN模型表现出更好的性能。
       此外，它还支持一种知识蒸馏策略，可以在保持性能的同时大幅减少推理时的计算成本。
 适用于：图像增强，图像去噪，图像恢复，目标检测，图像分割，图像分类，超分图像任务，语义分割，遥感语义分割等所有CV任务通用即插即用模块
-'''
+"""
+
 
 def to(x):
-    return {'device': x.device, 'dtype': x.dtype}
+    return {"device": x.device, "dtype": x.dtype}
+
 
 def pair(x):
     return (x, x) if not isinstance(x, tuple) else x
 
+
 def expand_dim(t, dim, k):
-    t = t.unsqueeze(dim = dim)
+    t = t.unsqueeze(dim=dim)
     expand_shape = [-1] * len(t.shape)
     expand_shape[dim] = k
     return t.expand(*expand_shape)
+
 
 def rel_to_abs(x):
     b, l, m = x.shape
     r = (m + 1) // 2
 
     col_pad = torch.zeros((b, l, 1), **to(x))
-    x = torch.cat((x, col_pad), dim = 2)
-    flat_x = rearrange(x, 'b l c -> b (l c)')
+    x = torch.cat((x, col_pad), dim=2)
+    flat_x = rearrange(x, "b l c -> b (l c)")
     flat_pad = torch.zeros((b, m - l), **to(x))
-    flat_x_padded = torch.cat((flat_x, flat_pad), dim = 1)
+    flat_x_padded = torch.cat((flat_x, flat_pad), dim=1)
     final_x = flat_x_padded.reshape(b, l + 1, m)
     final_x = final_x[:, :l, -r:]
     return final_x
+
 
 def relative_logits_1d(q, rel_k):
     b, h, w, _ = q.shape
     r = (rel_k.shape[0] + 1) // 2
 
-    logits = einsum('b x y d, r d -> b x y r', q, rel_k)
-    logits = rearrange(logits, 'b x y r -> (b x) y r')
+    logits = einsum("b x y d, r d -> b x y r", q, rel_k)
+    logits = rearrange(logits, "b x y r -> (b x) y r")
     logits = rel_to_abs(logits)
 
     logits = logits.reshape(b, h, w, r)
-    logits = expand_dim(logits, dim = 2, k = r)
+    logits = expand_dim(logits, dim=2, k=r)
     return logits
 
+
 class RelPosEmb(nn.Module):
-    def __init__(
-        self,
-        block_size,
-        rel_size,
-        dim_head
-    ):
+    def __init__(self, block_size, rel_size, dim_head):
         super().__init__()
         height = width = rel_size
-        scale = dim_head ** -0.5
+        scale = dim_head**-0.5
 
         self.block_size = block_size
         self.rel_height = nn.Parameter(torch.randn(height * 2 - 1, dim_head) * scale)
@@ -89,13 +92,13 @@ class RelPosEmb(nn.Module):
     def forward(self, q):
         block = self.block_size
 
-        q = rearrange(q, 'b (x y) c -> b x y c', x = block)
+        q = rearrange(q, "b (x y) c -> b x y c", x=block)
         rel_logits_w = relative_logits_1d(q, self.rel_width)
-        rel_logits_w = rearrange(rel_logits_w, 'b x i y j-> b (x y) (i j)')
+        rel_logits_w = rearrange(rel_logits_w, "b x i y j-> b (x y) (i j)")
 
-        q = rearrange(q, 'b x y d -> b y x d')
+        q = rearrange(q, "b x y d -> b y x d")
         rel_logits_h = relative_logits_1d(q, self.rel_height)
-        rel_logits_h = rearrange(rel_logits_h, 'b x i y j -> b (y x) (j i)')
+        rel_logits_h = rearrange(rel_logits_h, "b x i y j -> b (y x) (j i)")
         return rel_logits_w + rel_logits_h
 
 
@@ -105,10 +108,14 @@ class FixedPosEmb(nn.Module):
         self.window_size = window_size
         self.overlap_window_size = overlap_window_size
 
-        attention_mask_table = torch.zeros((window_size + overlap_window_size - 1), (window_size + overlap_window_size - 1))
-        attention_mask_table[0::2, :] = float('-inf')
-        attention_mask_table[:, 0::2] = float('-inf')
-        attention_mask_table = attention_mask_table.view((window_size + overlap_window_size - 1) * (window_size + overlap_window_size - 1))
+        attention_mask_table = torch.zeros(
+            (window_size + overlap_window_size - 1), (window_size + overlap_window_size - 1)
+        )
+        attention_mask_table[0::2, :] = float("-inf")
+        attention_mask_table[:, 0::2] = float("-inf")
+        attention_mask_table = attention_mask_table.view(
+            (window_size + overlap_window_size - 1) * (window_size + overlap_window_size - 1)
+        )
 
         # get pair-wise relative position index for each token inside the window
         coords_h = torch.arange(self.window_size)
@@ -126,9 +133,13 @@ class FixedPosEmb(nn.Module):
         relative_coords[:, :, 1] += self.overlap_window_size - 1
         relative_coords[:, :, 0] *= self.window_size + self.overlap_window_size - 1
         relative_position_index = relative_coords.sum(-1)  # Wh*Ww, Wh*Ww
-        self.attention_mask = nn.Parameter(attention_mask_table[relative_position_index.view(-1)].view(
-            1, self.window_size ** 2, self.overlap_window_size ** 2
-        ), requires_grad=False)
+        self.attention_mask = nn.Parameter(
+            attention_mask_table[relative_position_index.view(-1)].view(
+                1, self.window_size**2, self.overlap_window_size**2
+            ),
+            requires_grad=False,
+        )
+
     def forward(self):
         return self.attention_mask
 
@@ -136,15 +147,18 @@ class FixedPosEmb(nn.Module):
 ##########################################################################
 ## Layer Norm
 
-def to_3d(x):
-    return rearrange(x, 'b c h w -> b (h w) c')
 
-def to_4d(x,h,w):
-    return rearrange(x, 'b (h w) c -> b c h w',h=h,w=w)
+def to_3d(x):
+    return rearrange(x, "b c h w -> b (h w) c")
+
+
+def to_4d(x, h, w):
+    return rearrange(x, "b (h w) c -> b c h w", h=h, w=w)
+
 
 class BiasFree_LayerNorm(nn.Module):
     def __init__(self, normalized_shape):
-        super(BiasFree_LayerNorm, self).__init__()
+        super().__init__()
         if isinstance(normalized_shape, numbers.Integral):
             normalized_shape = (normalized_shape,)
         normalized_shape = torch.Size(normalized_shape)
@@ -156,11 +170,12 @@ class BiasFree_LayerNorm(nn.Module):
 
     def forward(self, x):
         sigma = x.var(-1, keepdim=True, unbiased=False)
-        return x / torch.sqrt(sigma+1e-5) * self.weight
+        return x / torch.sqrt(sigma + 1e-5) * self.weight
+
 
 class WithBias_LayerNorm(nn.Module):
     def __init__(self, normalized_shape):
-        super(WithBias_LayerNorm, self).__init__()
+        super().__init__()
         if isinstance(normalized_shape, numbers.Integral):
             normalized_shape = (normalized_shape,)
         normalized_shape = torch.Size(normalized_shape)
@@ -174,12 +189,13 @@ class WithBias_LayerNorm(nn.Module):
     def forward(self, x):
         mu = x.mean(-1, keepdim=True)
         sigma = x.var(-1, keepdim=True, unbiased=False)
-        return (x - mu) / torch.sqrt(sigma+1e-5) * self.weight + self.bias
+        return (x - mu) / torch.sqrt(sigma + 1e-5) * self.weight + self.bias
+
 
 class LayerNorm(nn.Module):
     def __init__(self, dim, LayerNorm_type):
-        super(LayerNorm, self).__init__()
-        if LayerNorm_type =='BiasFree':
+        super().__init__()
+        if LayerNorm_type == "BiasFree":
             self.body = BiasFree_LayerNorm(dim)
         else:
             self.body = WithBias_LayerNorm(dim)
@@ -187,6 +203,7 @@ class LayerNorm(nn.Module):
     def forward(self, x):
         h, w = x.shape[-2:]
         return to_4d(self.body(to_3d(x)), h, w)
+
 
 class PatchUnshuffle(nn.Module):
     def __init__(self, p=2, s=2):
@@ -198,10 +215,13 @@ class PatchUnshuffle(nn.Module):
         n, c, h, w = x.shape
         x = nn.functional.pixel_unshuffle(x, self.p)
         x = nn.functional.pixel_unshuffle(x, self.s)
-        x = x.view(n, c, self.p * self.p, self.s * self.s, h//self.p//self.s, w//self.p//self.s).permute(0, 1, 3, 2, 4, 5)
-        x = x.contiguous().view(n, c * (self.p**2) * (self.s**2), h//self.p//self.s, w//self.p//self.s)
+        x = x.view(n, c, self.p * self.p, self.s * self.s, h // self.p // self.s, w // self.p // self.s).permute(
+            0, 1, 3, 2, 4, 5
+        )
+        x = x.contiguous().view(n, c * (self.p**2) * (self.s**2), h // self.p // self.s, w // self.p // self.s)
         x = nn.functional.pixel_shuffle(x, self.p)
         return x
+
 
 class PatchShuffle(nn.Module):
     def __init__(self, p=2, s=2):
@@ -212,8 +232,8 @@ class PatchShuffle(nn.Module):
     def forward(self, x):
         n, c, h, w = x.shape
         x = nn.functional.pixel_unshuffle(x, self.p)
-        x = x.view(n, c//(self.s**2), (self.s**2), (self.p**2), h//self.p, w//self.p).permute(0, 1, 3, 2, 4, 5)
-        x = x.contiguous().view(n, c * (self.p**2), h//self.p, w//self.p)
+        x = x.view(n, c // (self.s**2), (self.s**2), (self.p**2), h // self.p, w // self.p).permute(0, 1, 3, 2, 4, 5)
+        x = x.contiguous().view(n, c * (self.p**2), h // self.p, w // self.p)
         x = nn.functional.pixel_shuffle(x, self.s)
         x = nn.functional.pixel_shuffle(x, self.p)
         return x
@@ -223,8 +243,8 @@ class CentralMaskedConv2d(nn.Conv2d):
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
-        self.register_buffer('mask', self.weight.data.clone())
-        _, _, kH, kW = self.weight.size()
+        self.register_buffer("mask", self.weight.data.clone())
+        _, _, kH, _kW = self.weight.size()
         self.mask.fill_(1)
         self.mask[:, :, kH // 2, kH // 2] = 0
 
@@ -235,23 +255,25 @@ class CentralMaskedConv2d(nn.Conv2d):
 
 class DilatedMDTA(nn.Module):
     def __init__(self, dim, num_heads, bias):
-        super(DilatedMDTA, self).__init__()
+        super().__init__()
         self.num_heads = num_heads
         self.temperature = nn.Parameter(torch.ones(num_heads, 1, 1))
 
-        self.qkv = nn.Conv2d(dim, dim*3, kernel_size=1, bias=bias)
-        self.qkv_dwconv = nn.Conv2d(dim*3, dim*3, kernel_size=3, stride=1, dilation=2, padding=2, groups=dim*3, bias=bias)
+        self.qkv = nn.Conv2d(dim, dim * 3, kernel_size=1, bias=bias)
+        self.qkv_dwconv = nn.Conv2d(
+            dim * 3, dim * 3, kernel_size=3, stride=1, dilation=2, padding=2, groups=dim * 3, bias=bias
+        )
         self.project_out = nn.Conv2d(dim, dim, kernel_size=1, bias=bias)
 
     def forward(self, x):
-        b,c,h,w = x.shape
+        _b, _c, h, w = x.shape
 
         qkv = self.qkv_dwconv(self.qkv(x))
-        q,k,v = qkv.chunk(3, dim=1)
+        q, k, v = qkv.chunk(3, dim=1)
 
-        q = rearrange(q, 'b (head c) h w -> b head c (h w)', head=self.num_heads)
-        k = rearrange(k, 'b (head c) h w -> b head c (h w)', head=self.num_heads)
-        v = rearrange(v, 'b (head c) h w -> b head c (h w)', head=self.num_heads)
+        q = rearrange(q, "b (head c) h w -> b head c (h w)", head=self.num_heads)
+        k = rearrange(k, "b (head c) h w -> b head c (h w)", head=self.num_heads)
+        v = rearrange(v, "b (head c) h w -> b head c (h w)", head=self.num_heads)
 
         q = torch.nn.functional.normalize(q, dim=-1)
         k = torch.nn.functional.normalize(k, dim=-1)
@@ -259,9 +281,9 @@ class DilatedMDTA(nn.Module):
         attn = (q @ k.transpose(-2, -1)) * self.temperature
         attn = attn.softmax(dim=-1)
 
-        out = (attn @ v)
+        out = attn @ v
 
-        out = rearrange(out, 'b head c (h w) -> b (head c) h w', head=self.num_heads, h=h, w=w)
+        out = rearrange(out, "b head c (h w) -> b (head c) h w", head=self.num_heads, h=h, w=w)
 
         out = self.project_out(out)
         return out
@@ -315,6 +337,7 @@ class DilatedMDTA(nn.Module):
 #         # merge spatial and channel
 #         out = self.project_out(out)
 
+
 #         return out
 class DilatedOCA(nn.Module):
     def __init__(self, dim, window_size=8, overlap_ratio=0.5, num_heads=2, dim_head=16, bias=False):
@@ -323,122 +346,124 @@ class DilatedOCA(nn.Module):
         self.window_size = window_size
         self.num_heads = num_heads
         self.dim_head = dim_head
-        self.scale = dim_head ** -0.5
-        
+        self.scale = dim_head**-0.5
+
         # 计算内部维度
         self.inner_dim = num_heads * dim_head
-        
+
         # 线性投影
         self.to_qkv = nn.Conv2d(dim, self.inner_dim * 3, 1, bias=bias)
         self.to_out = nn.Conv2d(self.inner_dim, dim, 1, bias=bias)
-        
+
         # 重叠窗口大小
         self.overlap_size = int(window_size * (1 + overlap_ratio))
-        
+
         # 数值稳定性参数
         self.eps = 1e-8
         self.max_value = 10.0
-    
+
     def forward(self, x):
-        B, C, H, W = x.shape
-        
+        _B, _C, H, W = x.shape
+
         # 1. 检查输入
         if torch.isnan(x).any() or torch.isinf(x).any():
             x = torch.nan_to_num(x, nan=0.0, posinf=self.max_value, neginf=-self.max_value)
-        
+
         # 2. 生成QKV
         qkv = self.to_qkv(x)
         q, k, v = qkv.chunk(3, dim=1)
-        
+
         # 3. 限制数值范围
         q = torch.clamp(q, -self.max_value, self.max_value)
         k = torch.clamp(k, -self.max_value, self.max_value)
         v = torch.clamp(v, -self.max_value, self.max_value)
-        
+
         # 4. 动态窗口划分
         # 如果特征图太小，使用整个特征图作为窗口
         if H <= self.window_size and W <= self.window_size:
             # 小特征图，不使用窗口
-            q = rearrange(q, 'b c h w -> b (h w) c')
-            k = rearrange(k, 'b c h w -> b (h w) c')
-            v = rearrange(v, 'b c h w -> b (h w) c')
-            
+            q = rearrange(q, "b c h w -> b (h w) c")
+            k = rearrange(k, "b c h w -> b (h w) c")
+            v = rearrange(v, "b c h w -> b (h w) c")
+
             # 分割头
-            q = rearrange(q, 'b n (h d) -> b h n d', h=self.num_heads)
-            k = rearrange(k, 'b n (h d) -> b h n d', h=self.num_heads)
-            v = rearrange(v, 'b n (h d) -> b h n d', h=self.num_heads)
-            
+            q = rearrange(q, "b n (h d) -> b h n d", h=self.num_heads)
+            k = rearrange(k, "b n (h d) -> b h n d", h=self.num_heads)
+            v = rearrange(v, "b n (h d) -> b h n d", h=self.num_heads)
+
         else:
             # 计算实际窗口大小
             window_h = min(self.window_size, H)
             window_w = min(self.window_size, W)
-            
+
             # 确保可整除
             H_pad = (window_h - H % window_h) % window_h
             W_pad = (window_w - W % window_w) % window_w
-            
+
             if H_pad > 0 or W_pad > 0:
                 q = F.pad(q, (0, W_pad, 0, H_pad))
                 k = F.pad(k, (0, W_pad, 0, H_pad))
                 v = F.pad(v, (0, W_pad, 0, H_pad))
                 H, W = H + H_pad, W + W_pad
-            
+
             # 划分窗口
-            q = rearrange(q, 'b c (h p1) (w p2) -> (b h w) (p1 p2) c', 
-                         p1=window_h, p2=window_w)
-            k = rearrange(k, 'b c (h p1) (w p2) -> (b h w) (p1 p2) c', 
-                         p1=window_h, p2=window_w)
-            v = rearrange(v, 'b c (h p1) (w p2) -> (b h w) (p1 p2) c', 
-                         p1=window_h, p2=window_w)
-            
+            q = rearrange(q, "b c (h p1) (w p2) -> (b h w) (p1 p2) c", p1=window_h, p2=window_w)
+            k = rearrange(k, "b c (h p1) (w p2) -> (b h w) (p1 p2) c", p1=window_h, p2=window_w)
+            v = rearrange(v, "b c (h p1) (w p2) -> (b h w) (p1 p2) c", p1=window_h, p2=window_w)
+
             # 分割头
-            q = rearrange(q, 'b n (h d) -> (b h) n d', h=self.num_heads)
-            k = rearrange(k, 'b n (h d) -> (b h) n d', h=self.num_heads)
-            v = rearrange(v, 'b n (h d) -> (b h) n d', h=self.num_heads)
-        
+            q = rearrange(q, "b n (h d) -> (b h) n d", h=self.num_heads)
+            k = rearrange(k, "b n (h d) -> (b h) n d", h=self.num_heads)
+            v = rearrange(v, "b n (h d) -> (b h) n d", h=self.num_heads)
+
         # 5. 计算注意力
         attn = torch.matmul(q, k.transpose(-2, -1)) * self.scale
-        
+
         # 限制注意力范围
         attn = torch.clamp(attn, -50.0, 50.0)
-        
+
         # 稳定的softmax
         attn = F.softmax(attn, dim=-1)
-        
+
         # 确保注意力权重有效
         attn = torch.clamp(attn, 0.0, 1.0)
-        
+
         # 计算输出
         out = torch.matmul(attn, v)
-        
+
         # 6. 重新组合
         if H <= self.window_size and W <= self.window_size:
-            out = rearrange(out, 'b h n d -> b n (h d)')
-            out = rearrange(out, 'b (h w) c -> b c h w', h=H, w=W)
+            out = rearrange(out, "b h n d -> b n (h d)")
+            out = rearrange(out, "b (h w) c -> b c h w", h=H, w=W)
         else:
-            out = rearrange(out, '(b h) n d -> b n (h d)', h=self.num_heads)
-            out = rearrange(out, '(b h w) (p1 p2) c -> b c (h p1) (w p2)', 
-                           h=H//window_h, w=W//window_w, 
-                           p1=window_h, p2=window_w)
-            
+            out = rearrange(out, "(b h) n d -> b n (h d)", h=self.num_heads)
+            out = rearrange(
+                out,
+                "(b h w) (p1 p2) c -> b c (h p1) (w p2)",
+                h=H // window_h,
+                w=W // window_w,
+                p1=window_h,
+                p2=window_w,
+            )
+
             # 移除填充
             if H_pad > 0 or W_pad > 0:
-                out = out[:, :, :H-H_pad, :W-W_pad]
-        
+                out = out[:, :, : H - H_pad, : W - W_pad]
+
         # 7. 输出投影
         out = self.to_out(out)
-        
+
         # 最终数值检查
         if torch.isnan(out).any() or torch.isinf(out).any():
             print("警告: DilatedOCA输出包含NaN/Inf，使用输入作为输出")
             out = x
-        
+
         return out
 
 
 class FeedForward(nn.Module):
     def __init__(self, dim, ffn_expansion_factor, bias):
-        super(FeedForward, self).__init__()
+        super().__init__()
 
         hidden_features = int(dim * ffn_expansion_factor)
 
@@ -451,25 +476,28 @@ class FeedForward(nn.Module):
         x = self.project_out(x)
         return x
 
+
 class GCSA(nn.Module):
     def __init__(self, dim, num_heads=4, bias=False):
-        super(GCSA, self).__init__()
+        super().__init__()
         self.num_heads = num_heads
         self.temperature = nn.Parameter(torch.ones(num_heads, 1, 1))
 
-        self.qkv = nn.Conv2d(dim, dim*3, kernel_size=1, bias=bias)
-        self.qkv_dwconv = nn.Conv2d(dim*3, dim*3, kernel_size=3, stride=1, dilation=2, padding=2, groups=dim*3, bias=bias)
+        self.qkv = nn.Conv2d(dim, dim * 3, kernel_size=1, bias=bias)
+        self.qkv_dwconv = nn.Conv2d(
+            dim * 3, dim * 3, kernel_size=3, stride=1, dilation=2, padding=2, groups=dim * 3, bias=bias
+        )
         self.project_out = nn.Conv2d(dim, dim, kernel_size=1, bias=bias)
 
     def forward(self, x):
-        b,c,h,w = x.shape
+        _b, _c, h, w = x.shape
 
         qkv = self.qkv_dwconv(self.qkv(x))
-        q,k,v = qkv.chunk(3, dim=1)
+        q, k, v = qkv.chunk(3, dim=1)
 
-        q = rearrange(q, 'b (head c) h w -> b head c (h w)', head=self.num_heads)
-        k = rearrange(k, 'b (head c) h w -> b head c (h w)', head=self.num_heads)
-        v = rearrange(v, 'b (head c) h w -> b head c (h w)', head=self.num_heads)
+        q = rearrange(q, "b (head c) h w -> b head c (h w)", head=self.num_heads)
+        k = rearrange(k, "b (head c) h w -> b head c (h w)", head=self.num_heads)
+        v = rearrange(v, "b (head c) h w -> b head c (h w)", head=self.num_heads)
 
         q = torch.nn.functional.normalize(q, dim=-1)
         k = torch.nn.functional.normalize(k, dim=-1)
@@ -477,17 +505,28 @@ class GCSA(nn.Module):
         attn = (q @ k.transpose(-2, -1)) * self.temperature
         attn = attn.softmax(dim=-1)
 
-        out = (attn @ v)
+        out = attn @ v
 
-        out = rearrange(out, 'b head c (h w) -> b (head c) h w', head=self.num_heads, h=h, w=w)
+        out = rearrange(out, "b head c (h w) -> b (head c) h w", head=self.num_heads, h=h, w=w)
 
         out = self.project_out(out)
         return out
 
-class DTAB(nn.Module):
-    def __init__(self, dim, window_size=8, overlap_ratio=0.5, num_channel_heads=2, num_spatial_heads=2, spatial_dim_head=16, ffn_expansion_factor=1, bias=False, LayerNorm_type='BiasFree'):
-        super(DTAB, self).__init__()
 
+class DTAB(nn.Module):
+    def __init__(
+        self,
+        dim,
+        window_size=8,
+        overlap_ratio=0.5,
+        num_channel_heads=2,
+        num_spatial_heads=2,
+        spatial_dim_head=16,
+        ffn_expansion_factor=1,
+        bias=False,
+        LayerNorm_type="BiasFree",
+    ):
+        super().__init__()
 
         self.spatial_attn = DilatedOCA(dim, window_size, overlap_ratio, num_spatial_heads, spatial_dim_head, bias)
         self.channel_attn = DilatedMDTA(dim, num_channel_heads, bias)
@@ -500,7 +539,6 @@ class DTAB(nn.Module):
         self.channel_ffn = FeedForward(dim, ffn_expansion_factor, bias)
         self.spatial_ffn = FeedForward(dim, ffn_expansion_factor, bias)
 
-
     def forward(self, x):
         x = x + self.channel_attn(self.norm1(x))
         x = x + self.channel_ffn(self.norm2(x))
@@ -508,15 +546,16 @@ class DTAB(nn.Module):
         x = x + self.spatial_ffn(self.norm4(x))
         return x
 
+
 # 输入 B C H W, 输出 B C H W
 if __name__ == "__main__":
-    DTAB_module =  DTAB(64)
+    DTAB_module = DTAB(64)
     GCSA_module = GCSA(64)
     input_tensor = torch.randn(1, 64, 128, 128)
     output_tensor = DTAB_module(input_tensor)
-    print('DTAB_Input size:', input_tensor.size())  # 打印输入张量的形状
-    print('DTAB_Output size:', output_tensor.size())  # 打印输出张量的形状
+    print("DTAB_Input size:", input_tensor.size())  # 打印输入张量的形状
+    print("DTAB_Output size:", output_tensor.size())  # 打印输出张量的形状
 
     output_tensor = GCSA_module(input_tensor)
-    print('GCSA_Input size:', input_tensor.size())  # 打印输入张量的形状
-    print('GCSA_Output size:', output_tensor.size())  # 打印输出张量的形状
+    print("GCSA_Input size:", input_tensor.size())  # 打印输入张量的形状
+    print("GCSA_Output size:", output_tensor.size())  # 打印输出张量的形状
