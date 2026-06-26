@@ -1,11 +1,12 @@
+import math
+from functools import partial
+
 import torch
 import torch.nn as nn
-from functools import partial
-import math
-from timm.models.layers import trunc_normal_tf_
 from timm.models.helpers import named_apply
+from timm.models.layers import trunc_normal_tf_
 
-'''
+"""
 来自CVPR 2025 顶会
 即插即用模块： SCM 特征位移混合模块
 带来两个二次创新模块 ： SPConv移动风车卷积模块  ； SCEU 移动有效上采样模块
@@ -29,11 +30,12 @@ SCM模块的主要操作包括：
 SCM模块适合：目标检测，图像分割，语义分割，图像增强，图像去噪，遥感语义分割，图像分类等所有CV任务通用的即插即用模块
 这个SCM轻量小巧模块，建议最好搭配其它模块一起使用！
 
-'''
+"""
+
 
 class Shift_channel_mix(nn.Module):
     def __init__(self, shift_size=1):
-        super(Shift_channel_mix, self).__init__()
+        super().__init__()
         self.shift_size = shift_size
 
     def forward(self, x):  # x的张量 [B,C,H,W]
@@ -59,6 +61,8 @@ def autopad(k, p=None, d=1):  # kernel, padding, dilation
     if p is None:
         p = k // 2 if isinstance(k, int) else [x // 2 for x in k]  # auto-pad
     return p
+
+
 class Conv(nn.Module):
     """Standard convolution with args(ch_in, ch_out, kernel, stride, padding, groups, dilation, activation)."""
 
@@ -78,9 +82,11 @@ class Conv(nn.Module):
     def forward_fuse(self, x):
         """Perform transposed convolution of 2D data."""
         return self.act(self.conv(x))
-#二次创新模块 SPConv  移动风车形状卷积
+
+
+# 二次创新模块 SPConv  移动风车形状卷积
 class SPConv(nn.Module):
-    ''' Pinwheel-shaped Convolution using the Asymmetric Padding method. '''
+    """Pinwheel-shaped Convolution using the Asymmetric Padding method."""
 
     def __init__(self, c1, c2, k=3, s=1):
         super().__init__()
@@ -99,6 +105,7 @@ class SPConv(nn.Module):
         self.cat = Conv(c2, c2, 2, s=1, p=0)
 
         self.shift_size = 1
+
     def forward(self, x):
         # 对输入 x 进行不同填充和卷积操作，得到四个方向的特征
         yw0 = self.cw(self.pad[0](x))  # 水平方向，第一个填充方式
@@ -119,24 +126,25 @@ class SPConv(nn.Module):
         return self.cat(out)  # 在通道维度拼接，并通过 cat 卷积层处理
 
 
-#二次创新模块 SEUB 移动有效上采样模块
+# 二次创新模块 SEUB 移动有效上采样模块
 
-def _init_weights(module, name, scheme=''):
+
+def _init_weights(module, name, scheme=""):
     if isinstance(module, nn.Conv2d) or isinstance(module, nn.Conv3d):
-        if scheme == 'normal':
-            nn.init.normal_(module.weight, std=.02)
+        if scheme == "normal":
+            nn.init.normal_(module.weight, std=0.02)
             if module.bias is not None:
                 nn.init.zeros_(module.bias)
-        elif scheme == 'trunc_normal':
-            trunc_normal_tf_(module.weight, std=.02)
+        elif scheme == "trunc_normal":
+            trunc_normal_tf_(module.weight, std=0.02)
             if module.bias is not None:
                 nn.init.zeros_(module.bias)
-        elif scheme == 'xavier_normal':
+        elif scheme == "xavier_normal":
             nn.init.xavier_normal_(module.weight)
             if module.bias is not None:
                 nn.init.zeros_(module.bias)
-        elif scheme == 'kaiming_normal':
-            nn.init.kaiming_normal_(module.weight, mode='fan_out', nonlinearity='relu')
+        elif scheme == "kaiming_normal":
+            nn.init.kaiming_normal_(module.weight, mode="fan_out", nonlinearity="relu")
             if module.bias is not None:
                 nn.init.zeros_(module.bias)
         else:
@@ -152,37 +160,46 @@ def _init_weights(module, name, scheme=''):
     elif isinstance(module, nn.LayerNorm):
         nn.init.constant_(module.weight, 1)
         nn.init.constant_(module.bias, 0)
+
+
 def channel_shuffle(x, groups):
     batchsize, num_channels, height, width = x.data.size()
     channels_per_group = num_channels // groups
     # reshape
-    x = x.view(batchsize, groups,
-               channels_per_group, height, width)
+    x = x.view(batchsize, groups, channels_per_group, height, width)
     x = torch.transpose(x, 1, 2).contiguous()
     # flatten
     x = x.view(batchsize, -1, height, width)
     return x
 
+
 class SCEU(nn.Module):
     def __init__(self, in_channels, out_channels, kernel_size=3, stride=1):
-        super(SCEU, self).__init__()
+        super().__init__()
 
         self.in_channels = in_channels
         self.out_channels = out_channels
         self.up_dwc = nn.Sequential(
             nn.Upsample(scale_factor=2),
-            nn.Conv2d(self.in_channels, self.in_channels, kernel_size=kernel_size, stride=stride,
-                      padding=kernel_size // 2, groups=self.in_channels, bias=False),
+            nn.Conv2d(
+                self.in_channels,
+                self.in_channels,
+                kernel_size=kernel_size,
+                stride=stride,
+                padding=kernel_size // 2,
+                groups=self.in_channels,
+                bias=False,
+            ),
             nn.BatchNorm2d(self.in_channels),
-            nn.ReLU(inplace=True)
+            nn.ReLU(inplace=True),
         )
         self.pwc = nn.Sequential(
             nn.Conv2d(self.in_channels, self.out_channels, kernel_size=1, stride=1, padding=0, bias=True)
         )
         self.SCM = Shift_channel_mix(shift_size=1)
-        self.init_weights('normal')
+        self.init_weights("normal")
 
-    def init_weights(self, scheme=''):
+    def init_weights(self, scheme=""):
         named_apply(partial(_init_weights, scheme=scheme), self)
 
     def forward(self, x):
@@ -192,22 +209,23 @@ class SCEU(nn.Module):
         x = self.pwc(x)
         return x
 
+
 # 输入 B C H W, 输出 B C H W
 if __name__ == "__main__":
-    input = torch.randn(1,32,64, 64)  # 创建一个形状为 (1,32,64, 64)
+    input = torch.randn(1, 32, 64, 64)  # 创建一个形状为 (1,32,64, 64)
     SCM = Shift_channel_mix()
     output = SCM(input)  # 通过SCM模块计算输出
-    print('SCM_Input size:', input.size())  # 打印输入张量的形状
-    print('SCM_Output size:', output.size())  # 打印输出张量的形状
+    print("SCM_Input size:", input.size())  # 打印输入张量的形状
+    print("SCM_Output size:", output.size())  # 打印输出张量的形状
 
     input = torch.randn(1, 32, 64, 64)  # 创建一个形状为 (1,32,64, 64)
-    SPConv = SPConv(32,32) #二次创新SPConv卷积模块
+    SPConv = SPConv(32, 32)  # 二次创新SPConv卷积模块
     output = SPConv(input)
-    print('二次创新SPConv_Input size:', input.size())  # 打印输入张量的形状
-    print('二次创新SPConv_Output size:', output.size())  # 打印输出张量的形状
+    print("二次创新SPConv_Input size:", input.size())  # 打印输入张量的形状
+    print("二次创新SPConv_Output size:", output.size())  # 打印输出张量的形状
 
     input = torch.randn(1, 32, 64, 64)  # 创建一个形状为 (1,32,64, 64)
-    SCEU = SCEU(32,32) #二次创新SCEU上采样模块
+    SCEU = SCEU(32, 32)  # 二次创新SCEU上采样模块
     output = SCEU(input)
-    print('二次创新SCEU_Input size:', input.size())  # 打印输入张量的形状
-    print('二次创新SCEU_Output size:', output.size())  # 打印输出张量的形状
+    print("二次创新SCEU_Input size:", input.size())  # 打印输入张量的形状
+    print("二次创新SCEU_Output size:", output.size())  # 打印输出张量的形状

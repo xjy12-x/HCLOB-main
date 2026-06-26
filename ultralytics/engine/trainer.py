@@ -6,10 +6,13 @@ Usage:
     $ yolo mode=train model=yolo11n.pt data=coco8.yaml imgsz=640 epochs=100 batch=16
 """
 
+from __future__ import annotations
+
 import gc
 import math
 import os
 import subprocess
+import sys
 import time
 import warnings
 from copy import copy, deepcopy
@@ -21,17 +24,12 @@ import torch
 from torch import distributed as dist
 from torch import nn, optim
 
-
-import sys
-import os
-from pathlib import Path
-
 # 直接设置项目根目录
 project_root = Path(__file__).resolve().parent.parent.parent  # 回溯到contrast-11
 print(f"项目根目录: {project_root}")
 
 # 清理并设置路径
-sys.path = [p for p in sys.path if 'contrast-11' not in p]  # 清除所有相关路径
+sys.path = [p for p in sys.path if "contrast-11" not in p]  # 清除所有相关路径
 sys.path.insert(0, str(project_root))  # 添加项目根目录
 sys.path.insert(0, str(project_root / "HCSC"))  # 添加HCSC目录
 
@@ -42,6 +40,7 @@ for i, p in enumerate(sys.path[:3]):
 # 尝试导入
 try:
     from HCSC.hcsc.hcsc import HCSC
+
     print("✅ HCSC导入成功")
 except ImportError as e:
     print(f"❌ HCSC导入失败: {e}")
@@ -52,11 +51,8 @@ except ImportError as e:
         for item in hcsc_path.rglob("*"):
             print(f"  {item.relative_to(hcsc_path)}")
     HCSC = None
-from HCSC.main import hcsc_train
-from HCSC.main import hcsc_train_loader
-from HCSC.main import hcsc_args
-from HCSC.main import hcsc_model
-from HCSC.main import hcsc_optimizer
+
+from HCSC.main import hcsc_args, hcsc_model, hcsc_optimizer, hcsc_train, hcsc_train_loader
 
 # from HCSC.main2 import hcsc_train
 # from HCSC.main2 import hcsc_train_loader
@@ -70,7 +66,6 @@ from HCSC.main import hcsc_optimizer
 # from HCSC.main1 import hcsc_args
 # from HCSC.main1 import hcsc_model
 # from HCSC.main1 import hcsc_optimizer
-
 # from HCSC.mainjoint import hcsc_train
 # from HCSC.mainjoint import hcsc_train_loader
 # from HCSC.mainjoint import hcsc_args
@@ -118,10 +113,10 @@ from ultralytics.utils.torch_utils import (
     unset_deterministic,
     unwrap_model,
 )
-    
+
+
 class BaseTrainer:
-    """
-    A base class for creating trainers.
+    """A base class for creating trainers.
 
     This class provides the foundation for training YOLO models, handling the training loop, validation, checkpointing,
     and various training utilities. It supports both single-GPU and multi-GPU distributed training.
@@ -171,8 +166,7 @@ class BaseTrainer:
     """
 
     def __init__(self, cfg=DEFAULT_CFG, overrides=None, _callbacks=None):
-        """
-        Initialize the BaseTrainer class.
+        """Initialize the BaseTrainer class.
 
         Args:
             cfg (str, optional): Path to a configuration file.
@@ -235,9 +229,6 @@ class BaseTrainer:
         # Callbacks
         self.callbacks = _callbacks or callbacks.get_default_callbacks()
 
-
-        
-
         if isinstance(self.args.device, str) and len(self.args.device):  # i.e. device='0' or device='0,1,2,3'
             world_size = len(self.args.device.split(","))
         elif isinstance(self.args.device, (tuple, list)):  # i.e. device=[0, 1, 2, 3] (multi-GPU from CLI is list)
@@ -253,9 +244,6 @@ class BaseTrainer:
         self.world_size = world_size
         # Run subprocess if DDP training, else train normally
 
-
-
-            
     def add_callback(self, event: str, callback):
         """Append the given callback to the event's callback list."""
         self.callbacks[event].append(callback)
@@ -268,7 +256,6 @@ class BaseTrainer:
         """Run all existing callbacks associated with a particular event."""
         for callback in self.callbacks.get(event, []):
             callback(self)
-
 
     def train(self):
         """Allow device='', device=None on Multi-GPU systems to default to device=0."""
@@ -412,14 +399,8 @@ class BaseTrainer:
         self.scheduler.last_epoch = self.start_epoch - 1  # do not move
         self.run_callbacks("on_pretrain_routine_end")
 
-
-
-
-
-
     def _do_train(self):
         """Train the model with the specified world size."""
-        
         if self.world_size > 1:
             self._setup_ddp()
         self._setup_train()
@@ -431,7 +412,6 @@ class BaseTrainer:
         self.epoch_time_start = time.time()
         self.train_time_start = time.time()
         self.run_callbacks("on_train_start")
-
 
         LOGGER.info(
             f"Image sizes {self.args.imgsz} train, {self.args.imgsz} val\n"
@@ -445,15 +425,12 @@ class BaseTrainer:
         epoch = self.start_epoch
         self.optimizer.zero_grad()  # zero any resumed gradients to ensure stability on train start
         while True:
-            #hcsc_loss = hcsc_train(hcsc_train_loader,hcsc_model, criterion, hcsc_optimizer, epoch, hcsc_args,cluster_result=None)
-            hcsc_loss = hcsc_train(hcsc_model, hcsc_train_loader,hcsc_optimizer, epoch, hcsc_args)
+            # hcsc_loss = hcsc_train(hcsc_train_loader,hcsc_model, criterion, hcsc_optimizer, epoch, hcsc_args,cluster_result=None)
+            hcsc_loss = hcsc_train(hcsc_model, hcsc_train_loader, hcsc_optimizer, epoch, hcsc_args)
             hcsc_loss = hcsc_loss
 
             self.epoch = epoch
             self.run_callbacks("on_train_epoch_start")
-
-
-
 
             with warnings.catch_warnings():
                 warnings.simplefilter("ignore")  # suppress 'Detected lr_scheduler.step() before optimizer.step()'
@@ -498,14 +475,12 @@ class BaseTrainer:
                         loss, self.loss_items = self.model(batch)
                     self.loss = loss.sum()
 
-                   
                     if RANK != -1:
                         self.loss *= self.world_size
-                    
-                
-                # 组合损失
+
+                    # 组合损失
                     total_loss = self.loss + 0.5 * hcsc_loss
-                    total_loss =total_loss
+                    total_loss = total_loss
                     self.tloss = self.loss_items if self.tloss is None else (self.tloss * i + self.loss_items) / (i + 1)
 
                 # Backward
@@ -538,11 +513,11 @@ class BaseTrainer:
                         )
                     )
                     # 添加HCSC损失到日志
-                    if hasattr(self, 'hcsc_enabled') and self.hcsc_enabled:
-                       pbar.set_postfix_str(f"YOLO: {self.loss.item():.4f}, HCSC: {hcsc_loss.item():.4f}")
-                
+                    if hasattr(self, "hcsc_enabled") and self.hcsc_enabled:
+                        pbar.set_postfix_str(f"YOLO: {self.loss.item():.4f}, HCSC: {hcsc_loss.item():.4f}")
+
                     self.run_callbacks("on_batch_end")
-                    
+
                     if self.args.plots and ni in self.plot_idx:
                         self.plot_training_samples(batch, ni)
 
@@ -633,7 +608,7 @@ class BaseTrainer:
                 total = torch.cuda.get_device_properties(self.device).total_memory
         return ((memory / total) if total > 0 else 0) if fraction else (memory / 2**30)
 
-    def _clear_memory(self, threshold: float = None):
+    def _clear_memory(self, threshold: float | None = None):
         """Clear accelerator memory by calling garbage collector and emptying cache."""
         if threshold:
             assert 0 <= threshold <= 1, "Threshold must be between 0 and 1."
@@ -706,8 +681,7 @@ class BaseTrainer:
             (self.wdir / f"epoch{self.epoch}.pt").write_bytes(serialized_ckpt)  # save epoch, i.e. 'epoch3.pt'
 
     def get_dataset(self):
-        """
-        Get train and validation datasets from data dictionary.
+        """Get train and validation datasets from data dictionary.
 
         Returns:
             (dict): A dictionary containing the training/validation/test dataset and category names.
@@ -742,8 +716,7 @@ class BaseTrainer:
         return data
 
     def setup_model(self):
-        """
-        Load, create, or download model for any task.
+        """Load, create, or download model for any task.
 
         Returns:
             (dict): Optional checkpoint to resume training from.
@@ -776,8 +749,7 @@ class BaseTrainer:
         return batch
 
     def validate(self):
-        """
-        Run validation on val set using self.validator.
+        """Run validation on val set using self.validator.
 
         Returns:
             metrics (dict): Dictionary of validation metrics.
@@ -806,10 +778,9 @@ class BaseTrainer:
         raise NotImplementedError("build_dataset function not implemented in trainer")
 
     def label_loss_items(self, loss_items=None, prefix="train"):
-        """
-        Return a loss dict with labelled training loss items tensor.
+        """Return a loss dict with labeled training loss items tensor.
 
-        Note:
+        Notes:
             This is not needed for classification but necessary for segmentation & detection
         """
         return {"loss": loss_items} if loss_items is not None else ["loss"]
@@ -841,9 +812,9 @@ class BaseTrainer:
         n = len(metrics) + 2  # number of cols
         t = time.time() - self.train_time_start
         self.csv.parent.mkdir(parents=True, exist_ok=True)  # ensure parent directory exists
-        s = "" if self.csv.exists() else (("%s," * n % tuple(["epoch", "time"] + keys)).rstrip(",") + "\n")  # header
+        s = "" if self.csv.exists() else (("%s," * n % tuple(["epoch", "time", *keys])).rstrip(",") + "\n")  # header
         with open(self.csv, "a", encoding="utf-8") as f:
-            f.write(s + ("%.6g," * n % tuple([self.epoch + 1, t] + vals)).rstrip(",") + "\n")
+            f.write(s + ("%.6g," * n % tuple([self.epoch + 1, t, *vals])).rstrip(",") + "\n")
 
     def plot_metrics(self):
         """Plot metrics from a CSV file."""
@@ -973,18 +944,16 @@ class BaseTrainer:
             self.train_loader.dataset.close_mosaic(hyp=copy(self.args))
 
     def build_optimizer(self, model, name="auto", lr=0.001, momentum=0.9, decay=1e-5, iterations=1e5):
-        """
-        Construct an optimizer for the given model.
+        """Construct an optimizer for the given model.
 
         Args:
             model (torch.nn.Module): The model for which to build an optimizer.
-            name (str, optional): The name of the optimizer to use. If 'auto', the optimizer is selected
-                based on the number of iterations.
+            name (str, optional): The name of the optimizer to use. If 'auto', the optimizer is selected based on the
+                number of iterations.
             lr (float, optional): The learning rate for the optimizer.
             momentum (float, optional): The momentum factor for the optimizer.
             decay (float, optional): The weight decay for the optimizer.
-            iterations (float, optional): The number of iterations, which determines the optimizer if
-                name is 'auto'.
+            iterations (float, optional): The number of iterations, which determines the optimizer if name is 'auto'.
 
         Returns:
             (torch.optim.Optimizer): The constructed optimizer.
