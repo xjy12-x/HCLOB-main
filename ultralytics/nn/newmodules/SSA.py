@@ -1,6 +1,7 @@
 import torch
-import torch.nn as nn
-'''
+from torch import nn
+
+"""
 来自CVPR2025顶会
 即插即用模块：ShuffleAttn（SSA） 序列打乱注意力
 二次创新模块：MSCSA 多尺度卷积混合注意力  
@@ -16,21 +17,23 @@ SSA作用总结:
     4.提升图像复原效果：尤其是在纹理、边缘和细节保持上更出色。
     
 SSA模块适合：图像恢复，目标检测，图像分割，语义分割，图像增强，图像去噪，遥感语义分割，图像分类等所有CV任务通用的即插即用模块
-'''
+"""
+
 
 class ShuffleAttn(nn.Module):
     def __init__(self, in_features, out_features, input_resolution=128, group=4):
         super().__init__()
         self.group = group
-        self.input_resolution = (input_resolution,input_resolution)
+        self.input_resolution = (input_resolution, input_resolution)
         self.in_features = in_features
         self.out_features = out_features
 
         self.gating = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
             nn.Conv2d(in_features, out_features, groups=self.group, kernel_size=1, stride=1, padding=0),
-            nn.Sigmoid()
+            nn.Sigmoid(),
         )
+
     def channel_shuffle(self, x):
         batchsize, num_channels, height, width = x.data.size()
         assert num_channels % self.group == 0
@@ -54,15 +57,17 @@ class ShuffleAttn(nn.Module):
 
     def forward(self, x):
         m = x
-        x = self.channel_shuffle(x)    # 1. 打乱通道顺序
-        x = self.gating(x)             # 2. 加权注意力（通道加权）
+        x = self.channel_shuffle(x)  # 1. 打乱通道顺序
+        x = self.gating(x)  # 2. 加权注意力（通道加权）
         x = self.channel_rearrange(x)  # 3. 通道重组恢复
-        return m*x
+        return m * x
 
-'''二次创新模块：MSGSA多尺度分组混合注意力'''
-import torch
-from torch import nn
+
+"""二次创新模块：MSGSA多尺度分组混合注意力"""
 import numpy as np
+from torch import nn
+
+
 class Config:
     def __init__(self):
         self.norm_layer = nn.LayerNorm
@@ -71,7 +76,11 @@ class Config:
         self.input_bits = 1  # 初始化为1，使用BinaryQuantizer
         self.clip_val = 1.0
         self.recu = False
+
+
 config = Config()
+
+
 class BinaryQuantizer(torch.autograd.Function):
     @staticmethod
     def forward(ctx, input):
@@ -88,9 +97,10 @@ class BinaryQuantizer(torch.autograd.Function):
 
         grad_input = (indicate_leftmid * (2 + 2 * input) + indicate_rightmid * (2 - 2 * input)) * grad_output.clone()
         return grad_input
+
+
 class TwnQuantizer(torch.autograd.Function):
-    """Ternary Weight Networks (TWN)
-    Ref: https://arxiv.org/abs/1605.04711
+    """Ternary Weight Networks (TWN) Ref: https://arxiv.org/abs/1605.04711.
     """
 
     @staticmethod
@@ -134,10 +144,10 @@ class TwnQuantizer(torch.autograd.Function):
         grad_input[input.ge(clip_val[1])] = 0
         grad_input[input.le(clip_val[0])] = 0
         return grad_input, None, None, None, None
+
+
 class SymQuantizer(torch.autograd.Function):
-    """
-        uniform quantization
-    """
+    """Uniform quantization."""
 
     @staticmethod
     def forward(ctx, input, clip_val, num_bits, layerwise, type=None):
@@ -178,9 +188,11 @@ class SymQuantizer(torch.autograd.Function):
         grad_input[input.ge(clip_val[1])] = 0
         grad_input[input.le(clip_val[0])] = 0
         return grad_input, None, None, None, None
+
+
 class QuantizeConv2d(nn.Conv2d):
     def __init__(self, *kargs, bias=True, config=None):
-        super(QuantizeConv2d, self).__init__(*kargs, bias=bias)
+        super().__init__(*kargs, bias=bias)
         self.weight_bits = config.weight_bits
         self.input_bits = config.input_bits
         self.recu = config.recu
@@ -188,35 +200,34 @@ class QuantizeConv2d(nn.Conv2d):
             self.weight_quantizer = BinaryQuantizer
         elif self.weight_bits == 2:
             self.weight_quantizer = TwnQuantizer
-            self.register_buffer('weight_clip_val', torch.tensor([-config.clip_val, config.clip_val]))
+            self.register_buffer("weight_clip_val", torch.tensor([-config.clip_val, config.clip_val]))
         elif self.weight_bits < 32:
             self.weight_quantizer = SymQuantizer
-            self.register_buffer('weight_clip_val', torch.tensor([-config.clip_val, config.clip_val]))
+            self.register_buffer("weight_clip_val", torch.tensor([-config.clip_val, config.clip_val]))
 
         if self.input_bits == 1:
             self.act_quantizer = BinaryQuantizer
         elif self.input_bits == 2:
             self.act_quantizer = TwnQuantizer
-            self.register_buffer('act_clip_val', torch.tensor([-config.clip_val, config.clip_val]))
+            self.register_buffer("act_clip_val", torch.tensor([-config.clip_val, config.clip_val]))
         elif self.input_bits < 32:
             self.act_quantizer = SymQuantizer
-            self.register_buffer('act_clip_val', torch.tensor([-config.clip_val, config.clip_val]))
+            self.register_buffer("act_clip_val", torch.tensor([-config.clip_val, config.clip_val]))
 
     def forward(self, input, recu=False):
         if self.weight_bits == 1:
-
             real_weights = self.weight
             scaling_factor = torch.mean(
-                torch.mean(torch.mean(abs(real_weights), dim=3, keepdim=True), dim=2, keepdim=True), dim=1,
-                keepdim=True)
+                torch.mean(torch.mean(abs(real_weights), dim=3, keepdim=True), dim=2, keepdim=True), dim=1, keepdim=True
+            )
             real_weights = real_weights - real_weights.mean([1, 2, 3], keepdim=True)
 
             if recu:
-
                 real_weights = real_weights / (
-                            torch.sqrt(real_weights.var([1, 2, 3], keepdim=True) + 1e-5) / 2 / np.sqrt(2))
+                    torch.sqrt(real_weights.var([1, 2, 3], keepdim=True) + 1e-5) / 2 / np.sqrt(2)
+                )
                 EW = torch.mean(torch.abs(real_weights))
-                Q_tau = (- EW * np.log(2 - 2 * 0.92)).detach().cpu().item()
+                Q_tau = (-EW * np.log(2 - 2 * 0.92)).detach().cpu().item()
                 scaling_factor = scaling_factor.detach()
                 binary_weights_no_grad = scaling_factor * torch.sign(real_weights)
                 cliped_weights = torch.clamp(real_weights, -Q_tau, Q_tau)
@@ -235,21 +246,26 @@ class QuantizeConv2d(nn.Conv2d):
         if self.input_bits == 1:
             input = self.act_quantizer.apply(input)
 
-        out = nn.functional.conv2d(input, weight, stride=self.stride, padding=self.padding, dilation=self.dilation,
-                                   groups=self.groups)
+        out = nn.functional.conv2d(
+            input, weight, stride=self.stride, padding=self.padding, dilation=self.dilation, groups=self.groups
+        )
 
         if not self.bias is None:
             out = out + self.bias.unsqueeze(0).unsqueeze(2).unsqueeze(3)
 
         return out
+
+
 class LearnableBiasnn(nn.Module):
     def __init__(self, out_chn):
-        super(LearnableBiasnn, self).__init__()
+        super().__init__()
         self.bias = nn.Parameter(torch.zeros([1, out_chn, 1, 1]), requires_grad=True)
 
     def forward(self, x):
         out = x + self.bias.expand_as(x)
         return out
+
+
 class RPReLU(nn.Module):
     def __init__(self, hidden_size):
         super().__init__()
@@ -260,7 +276,11 @@ class RPReLU(nn.Module):
     def forward(self, x):
         out = self.prelu((x - self.move1).transpose(-1, -2)).transpose(-1, -2) + self.move2
         return out
-'''二次创新模块：MSCSA多尺度卷积混合注意力'''
+
+
+"""二次创新模块：MSCSA多尺度卷积混合注意力"""
+
+
 def autopad(k, p=None, d=1):  # kernel, padding, dilation
     """Pad to 'same' shape outputs."""
     if d > 1:
@@ -268,8 +288,11 @@ def autopad(k, p=None, d=1):  # kernel, padding, dilation
     if p is None:
         p = k // 2 if isinstance(k, int) else [x // 2 for x in k]  # auto-pad
     return p
+
+
 class Conv(nn.Module):
     """Standard convolution with args(ch_in, ch_out, kernel, stride, padding, groups, dilation, activation)."""
+
     default_act = nn.SiLU()  # default activation
 
     def __init__(self, c1, c2, k=1, s=1, p=None, g=1, d=1, act=True):
@@ -286,10 +309,16 @@ class Conv(nn.Module):
     def forward_fuse(self, x):
         """Perform transposed convolution of 2D data."""
         return self.act(self.conv(x))
-'''二次创新模块：MSCSA多尺度卷积混合注意力'''
+
+
+"""二次创新模块：MSCSA多尺度卷积混合注意力"""
+
+
 class MSCSA(nn.Module):
-    def __init__(self, in_chn,config=config, dilation1=1, dilation2=3, dilation3=5, kernel_size=3, stride=1, padding='same'):
-        super(MSCSA, self).__init__()
+    def __init__(
+        self, in_chn, config=config, dilation1=1, dilation2=3, dilation3=5, kernel_size=3, stride=1, padding="same"
+    ):
+        super().__init__()
         self.inc = in_chn
         self.ouc = in_chn
         self.move = LearnableBiasnn(in_chn)
@@ -300,11 +329,11 @@ class MSCSA(nn.Module):
         self.act1 = RPReLU(in_chn)
         self.act2 = RPReLU(in_chn)
         self.act3 = RPReLU(in_chn)
-        self.ssa = ShuffleAttn(in_chn,in_chn)
-        self.stem_conv = Conv(in_chn, in_chn, 3, 1,1)
+        self.ssa = ShuffleAttn(in_chn, in_chn)
+        self.stem_conv = Conv(in_chn, in_chn, 3, 1, 1)
 
     def forward(self, x):  # 三个分支相加操作后再使用SSA
-        B, C, H, W = x.shape
+        _B, C, H, W = x.shape
         x = self.move(x)
         x1 = self.cov1(x).permute(0, 2, 3, 1).flatten(1, 2)
         x1 = self.act1(x1)
@@ -313,25 +342,26 @@ class MSCSA(nn.Module):
         x3 = self.cov3(x).permute(0, 2, 3, 1).flatten(1, 2)
         x3 = self.act3(x3)
         x = self.norm(x1 + x2 + x3)
-        x= x.permute(0, 2, 1).view(-1, C, H, W).contiguous()
-        if self.inc != self.ouc: #调整待加权的特征X的通道数与SSA处理后的权重通道数对齐
+        x = x.permute(0, 2, 1).view(-1, C, H, W).contiguous()
+        if self.inc != self.ouc:  # 调整待加权的特征X的通道数与SSA处理后的权重通道数对齐
             x = self.stem_conv(x)
         out = self.ssa(x)
         return out
 
-if __name__ == '__main__':
-    input = torch.randn(2,32,128,128).cuda()  # 输入张量B,C,H,W 对应-> 2,32,128,128
+
+if __name__ == "__main__":
+    input = torch.randn(2, 32, 128, 128).cuda()  # 输入张量B,C,H,W 对应-> 2,32,128,128
     # 创建 ShuffleAttn 模块
     model = ShuffleAttn(in_features=32, out_features=32, input_resolution=128).cuda()
     output = model(input)
     # 打印输入和输出张量的形状
-    print(f"ShuffleAttn_输入张量的形状: ",input.size())
-    print(f"ShuffleAttn_输入张量的形状: ",output.size())
+    print("ShuffleAttn_输入张量的形状: ", input.size())
+    print("ShuffleAttn_输入张量的形状: ", output.size())
 
-    input = torch.randn(2,32,128,128).cuda()  # 输入张量B,C,H,W 对应-> 2,32,128,128
+    input = torch.randn(2, 32, 128, 128).cuda()  # 输入张量B,C,H,W 对应-> 2,32,128,128
     # 创建 MSCSA 模块
-    model = MSCSA(in_chn=32,out_chn=64).cuda()
+    model = MSCSA(in_chn=32, out_chn=64).cuda()
     output = model(input)
     # 打印输入和输出张量的形状
-    print(f"二次创新MSCSA_输入张量的形状: ",input.size())
-    print(f"二次创新MSCSA_输入张量的形状: ",output.size())
+    print("二次创新MSCSA_输入张量的形状: ", input.size())
+    print("二次创新MSCSA_输入张量的形状: ", output.size())
