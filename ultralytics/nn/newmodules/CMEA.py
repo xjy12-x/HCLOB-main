@@ -1,12 +1,15 @@
 import torch
-import torch.nn as nn
+from torch import nn
+
 from ultralytics.nn.modules import C3
 
-__all__=['CMEA','C2f_CMEA','C3k2_CMEA']
+__all__ = ["CMEA", "C2f_CMEA", "C3k2_CMEA"]
+
+
 # 通道注意力模块 (Channel Attention Block)
 class CAB(nn.Module):
     def __init__(self, in_planes, ratio=16):  # 初始化 CAB 类，输入通道数和比例（默认为 16）
-        super(CAB, self).__init__()
+        super().__init__()
         self.avg_pool = nn.AdaptiveAvgPool2d(1)  # 定义全局平均池化，输出大小为 1x1
         self.max_pool = nn.AdaptiveMaxPool2d(1)  # 定义全局最大池化，输出大小为 1x1
 
@@ -23,11 +26,15 @@ class CAB(nn.Module):
 
         out = avg_out + max_out  # 将两者相加，融合通道信息
         return self.sigmoid(out)  # 对结果进行 Sigmoid 激活，生成通道注意力
+
+
 # 空间注意力模块 (Spatial Attention Block)
 class SAB(nn.Module):
     def __init__(self, kernel_size=7):  # 初始化 SAB 类，默认为 7x7 卷积核
-        super(SAB, self).__init__()
-        self.conv1 = nn.Conv2d(2, 1, kernel_size, padding=kernel_size // 2, bias=False)  # 卷积操作，输入通道为 2，输出通道为 1
+        super().__init__()
+        self.conv1 = nn.Conv2d(
+            2, 1, kernel_size, padding=kernel_size // 2, bias=False
+        )  # 卷积操作，输入通道为 2，输出通道为 1
         self.sigmoid = nn.Sigmoid()  # Sigmoid 激活函数
 
     def forward(self, x):  # 定义前向传播方法
@@ -37,6 +44,8 @@ class SAB(nn.Module):
         x = torch.cat([avg_out, max_out], dim=1)  # 将平均池化和最大池化的结果拼接起来
         x = self.conv1(x)  # 通过卷积提取空间特征
         return self.sigmoid(x)  # 使用 Sigmoid 激活，生成空间注意力
+
+
 # CMEA (卷积多尺度增强注意力模块)
 class CMEA(nn.Module):
     def __init__(self, in_channels, ratio=16):  # 初始化 CMEA 类，输入通道数和比例（默认为 16）
@@ -47,7 +56,8 @@ class CMEA(nn.Module):
             nn.Conv2d(self.in_channels, self.in_channels, 3, 1, 3 // 2, groups=self.in_channels, bias=False),
             # 3x3 深度可分离卷积
             nn.BatchNorm2d(self.in_channels),  # 批量归一化
-            nn.ReLU6(inplace=True))  # ReLU6 激活函数
+            nn.ReLU6(inplace=True),
+        )  # ReLU6 激活函数
 
         # 定义 1x1 卷积，用于通道融合
         self.conv1X1 = nn.Conv2d(in_channels, in_channels, kernel_size=1)
@@ -55,19 +65,23 @@ class CMEA(nn.Module):
         self.dwconv3X3 = nn.Sequential(
             nn.Conv2d(self.in_channels, self.in_channels, 3, 1, 3 // 2, groups=self.in_channels, bias=False),
             nn.BatchNorm2d(self.in_channels),
-            nn.ReLU6(inplace=True))
+            nn.ReLU6(inplace=True),
+        )
         self.dwconv5X5 = nn.Sequential(
             nn.Conv2d(self.in_channels, self.in_channels, 5, 1, 5 // 2, groups=self.in_channels, bias=False),
             nn.BatchNorm2d(self.in_channels),
-            nn.ReLU6(inplace=True))
+            nn.ReLU6(inplace=True),
+        )
         self.dwconv7X7 = nn.Sequential(
             nn.Conv2d(self.in_channels, self.in_channels, 7, 1, 7 // 2, groups=self.in_channels, bias=False),
             nn.BatchNorm2d(self.in_channels),
-            nn.ReLU6(inplace=True))
+            nn.ReLU6(inplace=True),
+        )
         self.dwconv9X9 = nn.Sequential(
             nn.Conv2d(self.in_channels, self.in_channels, 9, 1, 9 // 2, groups=self.in_channels, bias=False),
             nn.BatchNorm2d(self.in_channels),
-            nn.ReLU6(inplace=True))
+            nn.ReLU6(inplace=True),
+        )
 
         # 定义计算通道注意力的部分
         self.avg_pool = nn.AdaptiveAvgPool2d(1)  # 自适应平均池化
@@ -104,6 +118,7 @@ class CMEA(nn.Module):
         output = x * c_attention + x * s_attention  # 加权融合
         return output  # 返回输出
 
+
 def autopad(k, p=None, d=1):  # kernel, padding, dilation
     """Pad to 'same' shape outputs."""
     if d > 1:
@@ -115,6 +130,7 @@ def autopad(k, p=None, d=1):  # kernel, padding, dilation
 
 class Conv(nn.Module):
     """Standard convolution with args(ch_in, ch_out, kernel, stride, padding, groups, dilation, activation)."""
+
     default_act = nn.SiLU()  # default activation
 
     def __init__(self, c1, c2, k=1, s=1, p=None, g=1, d=1, act=True):
@@ -131,6 +147,7 @@ class Conv(nn.Module):
     def forward_fuse(self, x):
         """Perform transposed convolution of 2D data."""
         return self.act(self.conv(x))
+
 
 class Bottleneck_CMEA(nn.Module):
     """Standard bottleneck."""
@@ -151,7 +168,6 @@ class Bottleneck_CMEA(nn.Module):
         return x + self.Attention(self.cv2(self.cv1(x))) if self.add else self.Attention(self.cv2(self.cv1(x)))
 
 
-
 class C2f_CMEA(nn.Module):
     """Faster Implementation of CSP Bottleneck with 2 convolutions."""
 
@@ -163,7 +179,9 @@ class C2f_CMEA(nn.Module):
         self.c = int(c2 * e)  # hidden channels
         self.cv1 = Conv(c1, 2 * self.c, 1, 1)
         self.cv2 = Conv((2 + n) * self.c, c2, 1)  # optional act=FReLU(c2)
-        self.m = nn.ModuleList(Bottleneck_CMEA(self.c, self.c, shortcut, g, k=((3, 3), (3, 3)), e=1.0) for _ in range(n))
+        self.m = nn.ModuleList(
+            Bottleneck_CMEA(self.c, self.c, shortcut, g, k=((3, 3), (3, 3)), e=1.0) for _ in range(n)
+        )
 
     def forward(self, x):
         """Forward pass through C2f layer."""
@@ -176,6 +194,8 @@ class C2f_CMEA(nn.Module):
         y = list(self.cv1(x).split((self.c, self.c), 1))
         y.extend(m(y[-1]) for m in self.m)
         return self.cv2(torch.cat(y, 1))
+
+
 class C3k(C3):
     """C3k is a CSP bottleneck module with customizable kernel sizes for feature extraction in neural networks."""
 
@@ -185,6 +205,7 @@ class C3k(C3):
         c_ = int(c2 * e)  # hidden channels
         self.m = nn.Sequential(*(Bottleneck_CMEA(c_, c_, shortcut, g, k=((3, 3), (3, 3)), e=1.0) for _ in range(n)))
 
+
 class C3k2_CMEA(C2f_CMEA):
     """Faster Implementation of CSP Bottleneck with 2 convolutions."""
 
@@ -192,8 +213,12 @@ class C3k2_CMEA(C2f_CMEA):
         """Initializes the C3k2 module, a faster CSP Bottleneck with 2 convolutions and optional C3k blocks."""
         super().__init__(c1, c2, n, shortcut, g, e)
         self.m = nn.ModuleList(
-            C3k(self.c, self.c, 2, shortcut, g) if c3k else Bottleneck_CMEA(self.c, self.c, shortcut, g, k=((3, 3), (3, 3)), e=1.0) for _ in range(n)
+            C3k(self.c, self.c, 2, shortcut, g)
+            if c3k
+            else Bottleneck_CMEA(self.c, self.c, shortcut, g, k=((3, 3), (3, 3)), e=1.0)
+            for _ in range(n)
         )
+
 
 # # 输入 B C H W,  输出 B C H W
 # if __name__ == '__main__':
