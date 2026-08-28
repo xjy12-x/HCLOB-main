@@ -1,8 +1,10 @@
 import math
+
 import torch
-import torch.nn as nn
 import torch.nn.functional as F
-'''
+from torch import nn
+
+"""
 来自TGRS 2024  一区 小目标检测任务论文   
 即插即用模块： EFC 增强层间特征相关性  （增强特征融合模块）
 含二次创新模块  MSEF 多尺度有效融合模块  MSEF对EFC模块进行二次创新，效果优于EFC模块，可以直接拿去发小论文  冲sci一区或二区
@@ -47,11 +49,13 @@ EFC模块包含两个核心子模块：
 
 适用于：小目标检测任务，小目标分割任务， 图像增强任务，图像分类任务，暗光增强任务
        超分图像任务，遥感图像任务等所有计算机视觉CV任务通用的即插即用模块
-'''
+"""
+
+
 class channel_att(nn.Module):
     def __init__(self, channel, b=1, gamma=2):
-        super(channel_att, self).__init__()
-        kernel_size = int(abs((math.log(channel, 2) + b) / gamma))
+        super().__init__()
+        kernel_size = int(abs((math.log2(channel) + b) / gamma))
         kernel_size = kernel_size if kernel_size % 2 else kernel_size + 1
 
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
@@ -65,20 +69,25 @@ class channel_att(nn.Module):
         y = self.conv(y).transpose(-1, -2).unsqueeze(-1)
         y = self.sigmoid(y)
         return x * y.expand_as(x)
+
+
 class local_att(nn.Module):
     def __init__(self, channel, reduction=16):
-        super(local_att, self).__init__()
+        super().__init__()
 
-        self.conv_1x1 = nn.Conv2d(in_channels=channel, out_channels=channel // reduction, kernel_size=1, stride=1,
-                                  bias=False)
+        self.conv_1x1 = nn.Conv2d(
+            in_channels=channel, out_channels=channel // reduction, kernel_size=1, stride=1, bias=False
+        )
 
         self.relu = nn.ReLU()
         self.bn = nn.BatchNorm2d(channel // reduction)
 
-        self.F_h = nn.Conv2d(in_channels=channel // reduction, out_channels=channel, kernel_size=1, stride=1,
-                             bias=False)
-        self.F_w = nn.Conv2d(in_channels=channel // reduction, out_channels=channel, kernel_size=1, stride=1,
-                             bias=False)
+        self.F_h = nn.Conv2d(
+            in_channels=channel // reduction, out_channels=channel, kernel_size=1, stride=1, bias=False
+        )
+        self.F_w = nn.Conv2d(
+            in_channels=channel // reduction, out_channels=channel, kernel_size=1, stride=1, bias=False
+        )
 
         self.sigmoid_h = nn.Sigmoid()
         self.sigmoid_w = nn.Sigmoid()
@@ -98,10 +107,12 @@ class local_att(nn.Module):
 
         out = x * s_h.expand_as(x) * s_w.expand_as(x)
         return out
+
+
 class EFC(nn.Module):
     def __init__(self, c1):
         super().__init__()
-        c2=c1
+        c2 = c1
         self.conv1 = nn.Conv2d(c1, c2, kernel_size=1, stride=1)
         self.conv2 = nn.Conv2d(c2, c2, kernel_size=1, stride=1)
         self.conv4 = nn.Conv2d(c2, c2, kernel_size=1, stride=1)
@@ -123,11 +134,16 @@ class EFC(nn.Module):
         self.one = c2
         self.two = c2
         self.conv4_gobal = nn.Conv2d(c2, 1, kernel_size=1, stride=1)
-        for group_id in range(0, 4):
-            self.interact = nn.Conv2d(c2 // 4, c2 // 4, 1, 1, )
+        for group_id in range(4):
+            self.interact = nn.Conv2d(
+                c2 // 4,
+                c2 // 4,
+                1,
+                1,
+            )
 
     def forward(self, x1):
-        x2=x1
+        x2 = x1
 
         global_conv1 = self.conv1(x1)
         bn_x = self.bn(global_conv1)
@@ -141,7 +157,7 @@ class EFC(nn.Module):
         X_ = X_4_sigmoid * X_GOBAL
         X_ = X_.chunk(4, dim=1)
         out = []
-        for group_id in range(0, 4):
+        for group_id in range(4):
             out_1 = self.interact(X_[group_id])
             N, C, H, W = out_1.size()
             x_1_map = out_1.reshape(N, 1, -1)
@@ -160,7 +176,7 @@ class EFC(nn.Module):
         std_1 = x_shape_1.std(dim=2, keepdim=True)
         x_guiyi = (x_add_1 - mean_1) / (std_1 + self.eps)
         x_guiyi_1 = x_guiyi.reshape(N, C, H, W)
-        x_gui = (x_guiyi_1 * self.gamma + self.beta)
+        x_gui = x_guiyi_1 * self.gamma + self.beta
 
         weight_x3 = self.Apt(X_GOBAL)
         reweights = self.sigomid(weight_x3)
@@ -179,8 +195,9 @@ class EFC(nn.Module):
         xL = xL + x_gui
         return xL
 
+
 # 二次创新模块 MSEF 可以直接拿去发小论文，冲sci 一区或二区
-'''
+"""
 MSEF 多尺度有效融合模块
 
 MSEF 多尺度有效融合模块的内容介绍：
@@ -195,12 +212,13 @@ MFR子模块：分离并重构强特征和弱特征，最大限度地保留了�
 位置注意力子模块：对特征图的水平和垂直轴进行位置注意力处理，通过池化操作获取空间结构信息。
 这一步有助于更准确地定位小目标的空间位置，增强对关键空间区域的关注。
 
-'''
+"""
 
-class MSEF(nn.Module): #多尺度有效融合模块
+
+class MSEF(nn.Module):  # 多尺度有效融合模块
     def __init__(self, c1):
         super().__init__()
-        c2=c1
+        c2 = c1
         self.channel_att = channel_att(c2)
         self.local_att = local_att(c2)
 
@@ -225,11 +243,16 @@ class MSEF(nn.Module): #多尺度有效融合模块
         self.one = c2
         self.two = c2
         self.conv4_gobal = nn.Conv2d(c2, 1, kernel_size=1, stride=1)
-        for group_id in range(0, 4):
-            self.interact = nn.Conv2d(c2 // 4, c2 // 4, 1, 1, )
+        for group_id in range(4):
+            self.interact = nn.Conv2d(
+                c2 // 4,
+                c2 // 4,
+                1,
+                1,
+            )
 
     def forward(self, x1):
-        x2=x1
+        x2 = x1
 
         global_conv1 = self.conv1(x1)
         bn_x = self.bn(global_conv1)
@@ -246,7 +269,7 @@ class MSEF(nn.Module): #多尺度有效融合模块
         X_ = X_4_sigmoid * X_GOBAL
         X_ = X_.chunk(4, dim=1)
         out = []
-        for group_id in range(0, 4):
+        for group_id in range(4):
             out_1 = self.interact(X_[group_id])
             N, C, H, W = out_1.size()
             x_1_map = out_1.reshape(N, 1, -1)
@@ -265,7 +288,7 @@ class MSEF(nn.Module): #多尺度有效融合模块
         std_1 = x_shape_1.std(dim=2, keepdim=True)
         x_guiyi = (x_add_1 - mean_1) / (std_1 + self.eps)
         x_guiyi_1 = x_guiyi.reshape(N, C, H, W)
-        x_gui = (x_guiyi_1 * self.gamma + self.beta)
+        x_gui = x_guiyi_1 * self.gamma + self.beta
 
         weight_x3 = self.Apt(X_GOBAL)
         reweights = self.sigomid(weight_x3)
@@ -288,12 +311,12 @@ class MSEF(nn.Module): #多尺度有效融合模块
 
 
 # 输入 N C H W,  输出 N C H W
-if __name__ == '__main__':
+if __name__ == "__main__":
     input1 = torch.randn(1, 32, 64, 64)
     input2 = torch.randn(1, 64, 64, 64)
     # 初始化EFC模块并设定通道维度
-    EFC_module = EFC(c1=32,c2=64) #c1表示input1通道数，c2表示input2通道数，
-    output =EFC_module(input1,input2)#进行前向传播，输出通道数是C2
+    EFC_module = EFC(c1=32, c2=64)  # c1表示input1通道数，c2表示input2通道数，
+    output = EFC_module(input1, input2)  # 进行前向传播，输出通道数是C2
     # 输出结果的形状
     print("EFC_输入张量的形状：", input2.shape)
     print("EFC_输出张量的形状：", output.shape)
