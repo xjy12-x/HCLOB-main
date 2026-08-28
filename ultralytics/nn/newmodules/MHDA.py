@@ -1,9 +1,11 @@
-import torch
-import torch.nn as nn
-import torch.nn.functional as F
 import math
+
+import torch
+import torch.nn.functional as F
+from torch import nn
+
 # https://arxiv.org/pdf/2410.05258
-''' 
+""" 
 来自清华大学 Arxiv 2024     
 即插即用模块：MHDA 多头差分注意力模块   
 所有NLP和CV任务通用的即插即用注意力模块
@@ -27,11 +29,11 @@ DIFF Transformer 在语言建模、长序列建模、信息检索、幻觉减轻
 和上下文学习等任务中均优于传统 Transformer。
 在参数量和训练数据减少的情况下，仍然可以达到相似的性能。
 
-'''
+"""
+
+
 class RMSNorm(nn.Module):
-    """
-    Root Mean Square Layer Normalization.
-    Applies normalization across the last dimension and scales the output.
+    """Root Mean Square Layer Normalization. Applies normalization across the last dimension and scales the output.
     """
 
     def __init__(self, d, eps=1e-5):
@@ -45,8 +47,7 @@ class RMSNorm(nn.Module):
         self.scale = nn.Parameter(torch.ones(d))
 
     def forward(self, x):
-        """
-        Forward pass for RMSNorm.
+        """Forward pass for RMSNorm.
 
         Args:
             x (Tensor): Input tensor of shape (batch, sequence_length, d).
@@ -54,12 +55,12 @@ class RMSNorm(nn.Module):
         Returns:
             Tensor: Normalized and scaled tensor.
         """
-        norm = torch.sqrt(torch.mean(x ** 2, dim=-1, keepdim=True) + self.eps)
+        norm = torch.sqrt(torch.mean(x**2, dim=-1, keepdim=True) + self.eps)
         return x / norm * self.scale
+
+
 class SwiGLU(nn.Module):
-    """
-    SwiGLU Activation Function.
-    Combines the Swish activation with Gated Linear Units.
+    """SwiGLU Activation Function. Combines the Swish activation with Gated Linear Units.
     """
 
     def __init__(self, d_model):
@@ -75,8 +76,7 @@ class SwiGLU(nn.Module):
         self.W2 = nn.Linear(d_model * 2, d_model)
 
     def forward(self, x):
-        """
-        Forward pass for SwiGLU.
+        """Forward pass for SwiGLU.
 
         Args:
             x (Tensor): Input tensor of shape (batch, sequence_length, d_model).
@@ -89,11 +89,11 @@ class SwiGLU(nn.Module):
         z = self.W1(x)  # Linear part
         # Element-wise multiplication and projection
         return self.W2(g * z)
+
+
 class MHDA(nn.Module):
-    """
-    Multi-Head Differential Attention Mechanism.
-    Replaces the conventional softmax attention with a differential attention.
-    Incorporates a causal mask to ensure autoregressive behavior.
+    """Multi-Head Differential Attention Mechanism. Replaces the conventional softmax attention with a differential
+    attention. Incorporates a causal mask to ensure autoregressive behavior.
     """
 
     def __init__(self, d_model, num_heads, lambda_init):
@@ -104,7 +104,7 @@ class MHDA(nn.Module):
             lambda_init (float): Initial value for lambda.
         """
         super().__init__()
-        
+
         assert d_model % num_heads == 0, "d_model must be divisible by num_heads"
 
         self.num_heads = num_heads
@@ -133,9 +133,7 @@ class MHDA(nn.Module):
         self._reset_parameters()
 
     def _reset_parameters(self):
-        """
-        Initialize parameters for improved training stability.
-        """
+        """Initialize parameters for improved training stability."""
         nn.init.xavier_uniform_(self.W_q.weight)
         nn.init.xavier_uniform_(self.W_k.weight)
         nn.init.xavier_uniform_(self.W_v.weight)
@@ -143,8 +141,7 @@ class MHDA(nn.Module):
         nn.init.constant_(self.rms_scale, 1.0)
 
     def forward(self, X):
-        """
-        Forward pass for Multi-Head Differential Attention.
+        """Forward pass for Multi-Head Differential Attention.
 
         Args:
             X (Tensor): Input tensor of shape (batch, sequence_length, d_model).
@@ -152,7 +149,7 @@ class MHDA(nn.Module):
         Returns:
             Tensor: Output tensor after applying differential attention.
         """
-        batch, N, d_model = X.shape
+        batch, N, _d_model = X.shape
 
         # Project inputs to queries, keys, and values
         Q = self.W_q(X)  # Shape: (batch, N, 2 * num_heads * d_head)
@@ -186,7 +183,7 @@ class MHDA(nn.Module):
         # Shape of mask: (1, 1, N, N)
         mask = torch.tril(torch.ones((N, N), device=X.device)).unsqueeze(0).unsqueeze(0)  # (1, 1, N, N)
         # Replace 1s with 0.0 and 0s with -inf
-        mask = mask.masked_fill(mask == 0, float('-inf')).masked_fill(mask == 1, 0.0)
+        mask = mask.masked_fill(mask == 0, float("-inf")).masked_fill(mask == 1, 0.0)
         # -------------------------------------------------------------------- #
 
         # Compute attention scores
@@ -231,9 +228,8 @@ class MHDA(nn.Module):
 
 
 class DiffTransformerLayer(nn.Module):
-    """
-    Single Layer of the DiffTransformer Architecture.
-    Consists of Multi-Head Differential Attention followed by a SwiGLU Feed-Forward Network.
+    """Single Layer of the DiffTransformer Architecture. Consists of Multi-Head Differential Attention followed by a
+    SwiGLU Feed-Forward Network.
     """
 
     def __init__(self, d_model, num_heads, lambda_init):
@@ -250,8 +246,7 @@ class DiffTransformerLayer(nn.Module):
         self.ff = SwiGLU(d_model)
 
     def forward(self, x):
-        """
-        Forward pass for a single transformer layer.
+        """Forward pass for a single transformer layer.
 
         Args:
             x (Tensor): Input tensor of shape (batch, sequence_length, d_model).
@@ -265,8 +260,9 @@ class DiffTransformerLayer(nn.Module):
         z = self.ff(self.norm2(y)) + y
         return z
 
+
 # 输入 B  L C ,  输出 B L C
-if __name__ == '__main__':
+if __name__ == "__main__":
     # 初始化MultiHeadDifferentialAttention模型
     MHDA = MHDA(d_model=512, num_heads=8, lambda_init=0.8)
 
@@ -287,6 +283,5 @@ if __name__ == '__main__':
     input = torch.randn(B, L, C)  # 输入三维张量为 (B, L, C)
     # 进行前向传播
     output = MHDA(input)
-    print('NLP_MHDA_input size:', input.size())
-    print('NLP_MHDA_output size:', output.size())
-
+    print("NLP_MHDA_input size:", input.size())
+    print("NLP_MHDA_output size:", output.size())
