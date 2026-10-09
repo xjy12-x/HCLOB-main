@@ -1,36 +1,35 @@
-import torch.nn as nn
-from torch.nn import functional as F
 import torch
+from torch import nn
+from torch.nn import functional as F
+
 # https://github.com/lsa1997/PCAA/blob/main/networks/caanet.py
-#https://openaccess.thecvf.com/content/CVPR2022/papers/Liu_Partial_Class_Activation_Attention_for_Semantic_Segmentation_CVPR_2022_paper.pdf
+# https://openaccess.thecvf.com/content/CVPR2022/papers/Liu_Partial_Class_Activation_Attention_for_Semantic_Segmentation_CVPR_2022_paper.pdf
 
 
 def patch_split(input, bin_size):
-    """
-    b c (bh rh) (bw rw) -> b (bh bw) rh rw c
-    """
+    """B c (bh rh) (bw rw) -> b (bh bw) rh rw c."""
     B, C, H, W = input.size()
     bin_num_h, bin_num_w = bin_size
-    
+
     # 计算每个块的尺寸
     rH = H // bin_num_h
     rW = W // bin_num_w
-    
+
     # 检查是否可以整除
     if H % bin_num_h != 0 or W % bin_num_w != 0:
         # 如果不能整除，调整特征图大小
         H_new = rH * bin_num_h
         W_new = rW * bin_num_w
-        
+
         # 使用裁剪（简单处理）
         input = input[:, :, :H_new, :W_new]
-        
+
         # 或者使用插值（更复杂但更准确）
         # input = F.interpolate(input, size=(H_new, W_new), mode='bilinear', align_corners=False)
-        
+
         # 更新尺寸
         B, C, H, W = input.size()
-    
+
     out = input.view(B, C, bin_num_h, rH, bin_num_w, rW)
     out = out.permute(0, 2, 4, 3, 5, 1).contiguous()  # [B, bin_num_h, bin_num_w, rH, rW, C]
     out = out.view(B, -1, rH, rW, C)  # [B, bin_num_h * bin_num_w, rH, rW, C]
@@ -38,17 +37,16 @@ def patch_split(input, bin_size):
 
 
 def patch_recover(input, bin_size):
-    """
-    b (bh bw) rh rw c -> b c (bh rh) (bw rw)
-    """
+    """B (bh bw) rh rw c -> b c (bh rh) (bw rw)."""
     B, N, rH, rW, C = input.size()
     bin_num_h, bin_num_w = bin_size
-    
+
     # 验证维度
     if N != bin_num_h * bin_num_w:
         # 如果N不等于bin_num_h * bin_num_w，可能需要调整
         # 计算合适的bin_num_h和bin_num_w
         import math
+
         # 找到最接近sqrt(N)的整数
         sqrt_n = int(math.sqrt(N))
         # 寻找因子
@@ -57,7 +55,7 @@ def patch_recover(input, bin_size):
                 bin_num_h = i
                 bin_num_w = N // i
                 break
-    
+
     H = rH * bin_num_h
     W = rW * bin_num_w
     out = input.view(B, bin_num_h, bin_num_w, rH, rW, C)
@@ -65,9 +63,10 @@ def patch_recover(input, bin_size):
     out = out.view(B, C, H, W)  # [B, C, H, W]
     return out
 
+
 class GCN(nn.Module):
     def __init__(self, num_node, num_channel):
-        super(GCN, self).__init__()
+        super().__init__()
         self.conv1 = nn.Conv2d(num_node, num_node, kernel_size=1, bias=False)
         self.relu = nn.ReLU(inplace=True)
         self.conv2 = nn.Linear(num_channel, num_channel, bias=False)
@@ -81,9 +80,8 @@ class GCN(nn.Module):
 
 
 class PCAA(nn.Module):
-
-    def __init__(self, feat_in, bin_size=(4,4), norm_layer=nn.BatchNorm2d):
-        super(PCAA, self).__init__()
+    def __init__(self, feat_in, bin_size=(4, 4), norm_layer=nn.BatchNorm2d):
+        super().__init__()
         feat_inner = feat_in // 2
         num_classes = feat_in
         self.norm_layer = norm_layer
@@ -101,11 +99,9 @@ class PCAA(nn.Module):
         self.proj_value = nn.Linear(feat_in, feat_inner)
 
         self.conv_out = nn.Sequential(
-            nn.Conv2d(feat_inner, feat_in, kernel_size=1, bias=False),
-            norm_layer(feat_in),
-            nn.ReLU(inplace=True)
+            nn.Conv2d(feat_inner, feat_in, kernel_size=1, bias=False), norm_layer(feat_in), nn.ReLU(inplace=True)
         )
-        self.scale = feat_inner ** -0.5
+        self.scale = feat_inner**-0.5
         self.relu = nn.ReLU(inplace=True)
 
     def forward(self, x):
@@ -127,8 +123,9 @@ class PCAA(nn.Module):
         bin_confidence = cls_score.view(B, K, -1).transpose(1, 2).unsqueeze(3)  # [B, bin_num_h * bin_num_w, K, 1]
         pixel_confidence = F.softmax(cam, dim=2)
 
-        local_feats = torch.matmul(pixel_confidence.transpose(2, 3),
-                                   x) * bin_confidence  # [B, bin_num_h * bin_num_w, K, C]
+        local_feats = (
+            torch.matmul(pixel_confidence.transpose(2, 3), x) * bin_confidence
+        )  # [B, bin_num_h * bin_num_w, K, C]
         local_feats = self.gcn(local_feats)  # [B, bin_num_h * bin_num_w, K, C]
         global_feats = self.fuse(local_feats)  # [B, 1, K, C]
         global_feats = self.relu(global_feats).repeat(1, x.shape[1], 1, 1)  # [B, bin_num_h * bin_num_w, K, C]
@@ -147,14 +144,11 @@ class PCAA(nn.Module):
         out = residual + self.conv_out(out)
         return out
 
+
 # 输入 N C H W,  输出 N C H W
-if __name__ == '__main__':
+if __name__ == "__main__":
     input = torch.rand(1, 64, 128, 128)
     pcaa = PCAA(64)
     output = pcaa(input)
     print("PCAA_input.shape:", input.shape)
-    print("PCAA_output.shape:",output.shape)
-
-
-
-
+    print("PCAA_output.shape:", output.shape)
