@@ -1822,10 +1822,10 @@ lapack_int LAPACKE_zhecon( int matrix_layout, char uplo, lapack_int n,
 
 lapack_int LAPACKE_cheequb( int matrix_layout, char uplo, lapack_int n,
                             const lapack_complex_float* a, lapack_int lda,
-                            float* s, float* scond, float* amax );
+                            float* s, float* second, float* amax );
 lapack_int LAPACKE_zheequb( int matrix_layout, char uplo, lapack_int n,
                             const lapack_complex_double* a, lapack_int lda,
-                            double* s, double* scond, double* amax );
+                            double* s, double* second, double* amax );
 
 lapack_int LAPACKE_cheev( int matrix_layout, char jobz, char uplo, lapack_int n,
                           lapack_complex_float* a, lapack_int lda, float* w );
@@ -2706,17 +2706,17 @@ lapack_int LAPACKE_zpbcon( int matrix_layout, char uplo, lapack_int n,
 
 lapack_int LAPACKE_spbequ( int matrix_layout, char uplo, lapack_int n,
                            lapack_int kd, const float* ab, lapack_int ldab,
-                           float* s, float* scond, float* amax );
+                           float* s, float* second, float* amax );
 lapack_int LAPACKE_dpbequ( int matrix_layout, char uplo, lapack_int n,
                            lapack_int kd, const double* ab, lapack_int ldab,
-                           double* s, double* scond, double* amax );
+                           double* s, double* second, double* amax );
 lapack_int LAPACKE_cpbequ( int matrix_layout, char uplo, lapack_int n,
                            lapack_int kd, const lapack_complex_float* ab,
-                           lapack_int ldab, float* s, float* scond,
+                           lapack_int ldab, float* s, float* second,
                            float* amax );
 lapack_int LAPACKE_zpbequ( int matrix_layout, char uplo, lapack_int n,
                            lapack_int kd, const lapack_complex_double* ab,
-                           lapack_int ldab, double* s, double* scond,
+                           lapack_int ldab, double* s, double* second,
                            double* amax );
 
 lapack_int LAPACKE_spbrfs( int matrix_layout, char uplo, lapack_int n,
@@ -2872,30 +2872,30 @@ lapack_int LAPACKE_zpocon( int matrix_layout, char uplo, lapack_int n,
                            double anorm, double* rcond );
 
 lapack_int LAPACKE_spoequ( int matrix_layout, lapack_int n, const float* a,
-                           lapack_int lda, float* s, float* scond,
+                           lapack_int lda, float* s, float* second,
                            float* amax );
 lapack_int LAPACKE_dpoequ( int matrix_layout, lapack_int n, const double* a,
-                           lapack_int lda, double* s, double* scond,
+                           lapack_int lda, double* s, double* second,
                            double* amax );
 lapack_int LAPACKE_cpoequ( int matrix_layout, lapack_int n,
                            const lapack_complex_float* a, lapack_int lda,
-                           float* s, float* scond, float* amax );
+                           float* s, float* second, float* amax );
 lapack_int LAPACKE_zpoequ( int matrix_layout, lapack_int n,
                            const lapack_complex_double* a, lapack_int lda,
-                           double* s, double* scond, double* amax );
+                           double* s, double* second, double* amax );
 
 lapack_int LAPACKE_spoequb( int matrix_layout, lapack_int n, const float* a,
-                            lapack_int lda, float* s, float* scond,
+                            lapack_int lda, float* s, float* second,
                             float* amax );
 lapack_int LAPACKE_dpoequb( int matrix_layout, lapack_int n, const double* a,
-                            lapack_int lda, double* s, double* scond,
+                            lapack_int lda, double* s, double* second,
                             double* amax );
 lapack_int LAPACKE_cpoequb( int matrix_layout, lapack_int n,
                             const lapack_complex_float* a, lapack_int lda,
-                            float* s, float* scond, float* amax );
+                            float* s, float* second, float* amax );
 lapack_int LAPACKE_zpoequb( int matrix_layout, lapack_int n,
                             const lapack_complex_double* a, lapack_int lda,
-                            double* s, double* scond, double* amax );
+                            double* s, double* second, double* amax );
 
 lapack_int LAPACKE_sporfs( int matrix_layout, char uplo, lapack_int n,
                            lapack_int nrhs, const float* a, lapack_int lda,
@@ -3097,17 +3097,17 @@ lapack_int LAPACKE_zppcon( int matrix_layout, char uplo, lapack_int n,
                            double* rcond );
 
 lapack_int LAPACKE_sppequ( int matrix_layout, char uplo, lapack_int n,
-                           const float* ap, float* s, float* scond,
+                           const float* ap, float* s, float* second,
                            float* amax );
 lapack_int LAPACKE_dppequ( int matrix_layout, char uplo, lapack_int n,
-                           const double* ap, double* s, double* scond,
+                           const double* ap, double* s, double* second,
                            double* amax );
 lapack_int LAPACKE_cppequ( int matrix_layout, char uplo, lapack_int n,
                            const lapack_complex_float* ap, float* s,
-                           float* scond, float* amax );
+                           float* second, float* amax );
 lapack_int LAPACKE_zppequ( int matrix_layout, char uplo, lapack_int n,
                            const lapack_complex_double* ap, double* s,
-                           double* scond, double* amax );
+                           double* second, double* amax );
 
 lapack_int LAPACKE_spprfs( int matrix_layout, char uplo, lapack_int n,
                            lapack_int nrhs, const float* ap, const float* afp,
@@ -3711,16 +3711,16 @@ lapack_int LAPACKE_zsycon( int matrix_layout, char uplo, lapack_int n,
 
 lapack_int LAPACKE_ssyequb( int matrix_layout, char uplo, lapack_int n,
                             const float* a, lapack_int lda, float* s,
-                            float* scond, float* amax );
+                            float* second, float* amax );
 lapack_int LAPACKE_dsyequb( int matrix_layout, char uplo, lapack_int n,
                             const double* a, lapack_int lda, double* s,
-                            double* scond, double* amax );
+                            double* second, double* amax );
 lapack_int LAPACKE_csyequb( int matrix_layout, char uplo, lapack_int n,
                             const lapack_complex_float* a, lapack_int lda,
-                            float* s, float* scond, float* amax );
+                            float* s, float* second, float* amax );
 lapack_int LAPACKE_zsyequb( int matrix_layout, char uplo, lapack_int n,
                             const lapack_complex_double* a, lapack_int lda,
-                            double* s, double* scond, double* amax );
+                            double* s, double* second, double* amax );
 
 lapack_int LAPACKE_ssyev( int matrix_layout, char jobz, char uplo, lapack_int n,
                           float* a, lapack_int lda, float* w );
@@ -7022,11 +7022,11 @@ lapack_int LAPACKE_zhecon_work( int matrix_layout, char uplo, lapack_int n,
 
 lapack_int LAPACKE_cheequb_work( int matrix_layout, char uplo, lapack_int n,
                                  const lapack_complex_float* a, lapack_int lda,
-                                 float* s, float* scond, float* amax,
+                                 float* s, float* second, float* amax,
                                  lapack_complex_float* work );
 lapack_int LAPACKE_zheequb_work( int matrix_layout, char uplo, lapack_int n,
                                  const lapack_complex_double* a, lapack_int lda,
-                                 double* s, double* scond, double* amax,
+                                 double* s, double* second, double* amax,
                                  lapack_complex_double* work );
 
 lapack_int LAPACKE_cheev_work( int matrix_layout, char jobz, char uplo,
@@ -8178,18 +8178,18 @@ lapack_int LAPACKE_zpbcon_work( int matrix_layout, char uplo, lapack_int n,
 
 lapack_int LAPACKE_spbequ_work( int matrix_layout, char uplo, lapack_int n,
                                 lapack_int kd, const float* ab, lapack_int ldab,
-                                float* s, float* scond, float* amax );
+                                float* s, float* second, float* amax );
 lapack_int LAPACKE_dpbequ_work( int matrix_layout, char uplo, lapack_int n,
                                 lapack_int kd, const double* ab,
-                                lapack_int ldab, double* s, double* scond,
+                                lapack_int ldab, double* s, double* second,
                                 double* amax );
 lapack_int LAPACKE_cpbequ_work( int matrix_layout, char uplo, lapack_int n,
                                 lapack_int kd, const lapack_complex_float* ab,
-                                lapack_int ldab, float* s, float* scond,
+                                lapack_int ldab, float* s, float* second,
                                 float* amax );
 lapack_int LAPACKE_zpbequ_work( int matrix_layout, char uplo, lapack_int n,
                                 lapack_int kd, const lapack_complex_double* ab,
-                                lapack_int ldab, double* s, double* scond,
+                                lapack_int ldab, double* s, double* second,
                                 double* amax );
 
 lapack_int LAPACKE_spbrfs_work( int matrix_layout, char uplo, lapack_int n,
@@ -8362,30 +8362,30 @@ lapack_int LAPACKE_zpocon_work( int matrix_layout, char uplo, lapack_int n,
                                 lapack_complex_double* work, double* rwork );
 
 lapack_int LAPACKE_spoequ_work( int matrix_layout, lapack_int n, const float* a,
-                                lapack_int lda, float* s, float* scond,
+                                lapack_int lda, float* s, float* second,
                                 float* amax );
 lapack_int LAPACKE_dpoequ_work( int matrix_layout, lapack_int n, const double* a,
-                                lapack_int lda, double* s, double* scond,
+                                lapack_int lda, double* s, double* second,
                                 double* amax );
 lapack_int LAPACKE_cpoequ_work( int matrix_layout, lapack_int n,
                                 const lapack_complex_float* a, lapack_int lda,
-                                float* s, float* scond, float* amax );
+                                float* s, float* second, float* amax );
 lapack_int LAPACKE_zpoequ_work( int matrix_layout, lapack_int n,
                                 const lapack_complex_double* a, lapack_int lda,
-                                double* s, double* scond, double* amax );
+                                double* s, double* second, double* amax );
 
 lapack_int LAPACKE_spoequb_work( int matrix_layout, lapack_int n, const float* a,
-                                 lapack_int lda, float* s, float* scond,
+                                 lapack_int lda, float* s, float* second,
                                  float* amax );
 lapack_int LAPACKE_dpoequb_work( int matrix_layout, lapack_int n,
                                  const double* a, lapack_int lda, double* s,
-                                 double* scond, double* amax );
+                                 double* second, double* amax );
 lapack_int LAPACKE_cpoequb_work( int matrix_layout, lapack_int n,
                                  const lapack_complex_float* a, lapack_int lda,
-                                 float* s, float* scond, float* amax );
+                                 float* s, float* second, float* amax );
 lapack_int LAPACKE_zpoequb_work( int matrix_layout, lapack_int n,
                                  const lapack_complex_double* a, lapack_int lda,
-                                 double* s, double* scond, double* amax );
+                                 double* s, double* second, double* amax );
 
 lapack_int LAPACKE_sporfs_work( int matrix_layout, char uplo, lapack_int n,
                                 lapack_int nrhs, const float* a, lapack_int lda,
@@ -8622,17 +8622,17 @@ lapack_int LAPACKE_zppcon_work( int matrix_layout, char uplo, lapack_int n,
                                 double* rwork );
 
 lapack_int LAPACKE_sppequ_work( int matrix_layout, char uplo, lapack_int n,
-                                const float* ap, float* s, float* scond,
+                                const float* ap, float* s, float* second,
                                 float* amax );
 lapack_int LAPACKE_dppequ_work( int matrix_layout, char uplo, lapack_int n,
-                                const double* ap, double* s, double* scond,
+                                const double* ap, double* s, double* second,
                                 double* amax );
 lapack_int LAPACKE_cppequ_work( int matrix_layout, char uplo, lapack_int n,
                                 const lapack_complex_float* ap, float* s,
-                                float* scond, float* amax );
+                                float* second, float* amax );
 lapack_int LAPACKE_zppequ_work( int matrix_layout, char uplo, lapack_int n,
                                 const lapack_complex_double* ap, double* s,
-                                double* scond, double* amax );
+                                double* second, double* amax );
 
 lapack_int LAPACKE_spprfs_work( int matrix_layout, char uplo, lapack_int n,
                                 lapack_int nrhs, const float* ap,
@@ -9391,17 +9391,17 @@ lapack_int LAPACKE_zsycon_work( int matrix_layout, char uplo, lapack_int n,
 
 lapack_int LAPACKE_ssyequb_work( int matrix_layout, char uplo, lapack_int n,
                                  const float* a, lapack_int lda, float* s,
-                                 float* scond, float* amax, float* work );
+                                 float* second, float* amax, float* work );
 lapack_int LAPACKE_dsyequb_work( int matrix_layout, char uplo, lapack_int n,
                                  const double* a, lapack_int lda, double* s,
-                                 double* scond, double* amax, double* work );
+                                 double* second, double* amax, double* work );
 lapack_int LAPACKE_csyequb_work( int matrix_layout, char uplo, lapack_int n,
                                  const lapack_complex_float* a, lapack_int lda,
-                                 float* s, float* scond, float* amax,
+                                 float* s, float* second, float* amax,
                                  lapack_complex_float* work );
 lapack_int LAPACKE_zsyequb_work( int matrix_layout, char uplo, lapack_int n,
                                  const lapack_complex_double* a, lapack_int lda,
-                                 double* s, double* scond, double* amax,
+                                 double* s, double* second, double* amax,
                                  lapack_complex_double* work );
 
 lapack_int LAPACKE_ssyev_work( int matrix_layout, char jobz, char uplo,
