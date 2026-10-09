@@ -1,33 +1,35 @@
 import argparse
+import datetime
+import logging
+import math
 import os
 import pickle
+import subprocess
 import sys
 import time
-import math
-import datetime
-from datetime import timedelta
-import subprocess
-from collections import defaultdict, deque
-import logging
-from logging import getLogger
 import warnings
+from collections import defaultdict, deque
+from datetime import timedelta
+from logging import getLogger
+
 import numpy as np
+
 # 在导入pandas之前添加
 try:
     import numpy as np
+
     np.__config__.show()  # 验证NumPy配置
 except ImportError as e:
     print("NumPy导入错误:", e)
     # 手动加载DLL
     import ctypes
-    ctypes.CDLL('F:\\HCSC-master\\openblas\\bin\\libopenblas.dll')
-    
-import pandas as pd
+
+    ctypes.CDLL("F:\\HCSC-master\\openblas\\bin\\libopenblas.dll")
+
 import pandas as pd
 import torch
-from torch import Tensor, nn
 import torch.distributed as dist
-from PIL import ImageFilter, ImageOps
+from torch import nn
 
 logger = getLogger()
 
@@ -39,20 +41,18 @@ class LogFormatter:
     def format(self, record):
         elapsed_seconds = round(record.created - self.start_time)
 
-        prefix = "%s - %s - %s" % (
+        prefix = "{} - {} - {}".format(
             record.levelname,
             time.strftime("%x %X"),
             timedelta(seconds=elapsed_seconds),
         )
         message = record.getMessage()
         message = message.replace("\n", "\n" + " " * (len(prefix) + 3))
-        return "%s - %s" % (prefix, message) if message else ""
+        return f"{prefix} - {message}" if message else ""
 
 
 def create_logger(filepath, rank):
-    """
-    Create a logger.
-    Use a different log file for each process.
+    """Create a logger. Use a different log file for each process.
     """
     # create log formatter
     log_formatter = LogFormatter()
@@ -88,10 +88,8 @@ def create_logger(filepath, rank):
     return logger
 
 
-class PD_Stats(object):
-    """
-    Log stuff with pandas library
-    """
+class PD_Stats:
+    """Log stuff with pandas library."""
 
     def __init__(self, path, columns):
         self.path = path
@@ -113,15 +111,11 @@ class PD_Stats(object):
         if save:
             self.stats.to_pickle(self.path)
 
-def initialize_exp(params, *args, dump_params=True):
-    """
-    Initialize the experience:
-    - dump parameters
-    - create checkpoint repo
-    - create a logger
-    - create a panda object to keep track of the training statistics
-    """
 
+def initialize_exp(params, *args, dump_params=True):
+    """Initialize the experience: - dump parameters - create checkpoint repo - create a logger - create a panda object
+    to keep track of the training statistics.
+    """
     # dump parameters
     try:
         if dump_params:
@@ -138,40 +132,36 @@ def initialize_exp(params, *args, dump_params=True):
         print("error when dumping checkpoints")
 
     # create a panda object to log loss and acc
-    training_stats = PD_Stats(
-        os.path.join(params.exp_dir, "stats" + str(params.rank) + ".pkl"), args
-    )
+    training_stats = PD_Stats(os.path.join(params.exp_dir, "stats" + str(params.rank) + ".pkl"), args)
 
     # create a logger
-    logger = create_logger(
-        os.path.join(params.exp_dir, "train.log"), rank=params.rank
-    )
+    logger = create_logger(os.path.join(params.exp_dir, "train.log"), rank=params.rank)
     logger.info("============ Initialized logger ============")
-    logger.info(
-        "\n".join("%s: %s" % (k, str(v)) for k, v in sorted(dict(vars(params)).items()))
-    )
-    logger.info("The experiment will be stored in %s\n" % params.exp_dir)
+    logger.info("\n".join(f"{k}: {v!s}" for k, v in sorted(dict(vars(params)).items())))
+    logger.info(f"The experiment will be stored in {params.exp_dir}\n")
     logger.info("")
     return logger, training_stats
 
 
 def mkdir(path):
-    path=path.strip()
-    path=path.rstrip("\\")
-    isExists=os.path.exists(path)
+    path = path.strip()
+    path = path.rstrip("\\")
+    isExists = os.path.exists(path)
     if not isExists:
-        print (path+" created")
+        print(path + " created")
         os.makedirs(path)
         return True
     else:
-        print (path+' existed')
+        print(path + " existed")
         return False
+
 
 def execCmd(cmd):
     r = os.popen(cmd)
     text = r.read()
     r.close()
     return text
+
 
 def load_pretrained_weights(model, pretrained_weights, checkpoint_key, model_name):
     if os.path.isfile(pretrained_weights):
@@ -185,7 +175,7 @@ def load_pretrained_weights(model, pretrained_weights, checkpoint_key, model_nam
         state_dict = {k.replace("backbone.", ""): v for k, v in state_dict.items()}
         state_dict = {k.replace("encoder_q.", ""): v for k, v in state_dict.items()}
         msg = model.load_state_dict(state_dict, strict=False)
-        print('Pretrained weights found at {} and loaded with msg: {}'.format(pretrained_weights, msg))
+        print(f"Pretrained weights found at {pretrained_weights} and loaded with msg: {msg}")
     else:
         raise Exception
 
@@ -211,12 +201,10 @@ def cancel_gradients_last_layer(epoch, model, freeze_last_layer):
 
 
 def restart_from_checkpoint(ckp_path, run_variables=None, **kwargs):
-    """
-    Re-start from checkpoint
-    """
+    """Re-start from checkpoint."""
     if not os.path.isfile(ckp_path):
         return
-    print("Found checkpoint at {}".format(ckp_path))
+    print(f"Found checkpoint at {ckp_path}")
 
     # open checkpoint file
     checkpoint = torch.load(ckp_path, map_location="cpu")
@@ -228,15 +216,15 @@ def restart_from_checkpoint(ckp_path, run_variables=None, **kwargs):
         if key in checkpoint and value is not None:
             try:
                 msg = value.load_state_dict(checkpoint[key], strict=False)
-                print("=> loaded '{}' from checkpoint '{}' with msg {}".format(key, ckp_path, msg))
+                print(f"=> loaded '{key}' from checkpoint '{ckp_path}' with msg {msg}")
             except TypeError:
                 try:
                     msg = value.load_state_dict(checkpoint[key])
-                    print("=> loaded '{}' from checkpoint: '{}'".format(key, ckp_path))
+                    print(f"=> loaded '{key}' from checkpoint: '{ckp_path}'")
                 except ValueError:
-                    print("=> failed to load '{}' from checkpoint: '{}'".format(key, ckp_path))
+                    print(f"=> failed to load '{key}' from checkpoint: '{ckp_path}'")
         else:
-            print("=> key '{}' not found in checkpoint: '{}'".format(key, ckp_path))
+            print(f"=> key '{key}' not found in checkpoint: '{ckp_path}'")
 
     # re load variable important for the run
     if run_variables is not None:
@@ -260,9 +248,7 @@ def cosine_scheduler(base_value, final_value, epochs, niter_per_ep, warmup_epoch
 
 
 def bool_flag(s):
-    """
-    Parse boolean arguments from the command line.
-    """
+    """Parse boolean arguments from the command line."""
     FALSY_STRINGS = {"off", "false", "0"}
     TRUTHY_STRINGS = {"on", "true", "1"}
     if s.lower() in FALSY_STRINGS:
@@ -274,17 +260,14 @@ def bool_flag(s):
 
 
 def fix_random_seeds(seed=31):
-    """
-    Fix random seeds.
-    """
+    """Fix random seeds."""
     torch.manual_seed(seed)
     torch.cuda.manual_seed_all(seed)
     np.random.seed(seed)
 
 
-class SmoothedValue(object):
-    """Track a series of values and provide access to smoothed values over a
-    window or the global series average.
+class SmoothedValue:
+    """Track a series of values and provide access to smoothed values over a window or the global series average.
     """
 
     def __init__(self, window_size=20, fmt=None):
@@ -301,12 +284,10 @@ class SmoothedValue(object):
         self.total += value * n
 
     def synchronize_between_processes(self):
-        """
-        Warning: does not synchronize the deque!
-        """
+        """Warning: does not synchronize the deque!"""
         if not is_dist_avail_and_initialized():
             return
-        t = torch.tensor([self.count, self.total], dtype=torch.float64, device='cuda')
+        t = torch.tensor([self.count, self.total], dtype=torch.float64, device="cuda")
         dist.barrier()
         dist.all_reduce(t)
         t = t.tolist()
@@ -337,21 +318,16 @@ class SmoothedValue(object):
 
     def __str__(self):
         return self.fmt.format(
-            median=self.median,
-            avg=self.avg,
-            global_avg=self.global_avg,
-            max=self.max,
-            value=self.value)
+            median=self.median, avg=self.avg, global_avg=self.global_avg, max=self.max, value=self.value
+        )
 
 
 def reduce_dict(input_dict, average=True):
     """
     Args:
         input_dict (dict): all the values will be reduced
-        average (bool): whether to do average or sum
-    Reduce the values in the dictionary from all processes so that all processes
-    have the averaged results. Returns a dict with the same fields as
-    input_dict, after reduction.
+        average (bool): whether to do average or sum Reduce the values in the dictionary from all processes so that all
+            processes have the averaged results. Returns a dict with the same fields as input_dict, after reduction.
     """
     world_size = get_world_size()
     if world_size < 2:
@@ -371,7 +347,7 @@ def reduce_dict(input_dict, average=True):
     return reduced_dict
 
 
-class MetricLogger(object):
+class MetricLogger:
     def __init__(self, delimiter="\t"):
         self.meters = defaultdict(SmoothedValue)
         self.delimiter = delimiter
@@ -388,15 +364,12 @@ class MetricLogger(object):
             return self.meters[attr]
         if attr in self.__dict__:
             return self.__dict__[attr]
-        raise AttributeError("'{}' object has no attribute '{}'".format(
-            type(self).__name__, attr))
+        raise AttributeError(f"'{type(self).__name__}' object has no attribute '{attr}'")
 
     def __str__(self):
         loss_str = []
         for name, meter in self.meters.items():
-            loss_str.append(
-                "{}: {}".format(name, str(meter))
-            )
+            loss_str.append(f"{name}: {meter!s}")
         return self.delimiter.join(loss_str)
 
     def synchronize_between_processes(self):
@@ -409,31 +382,28 @@ class MetricLogger(object):
     def log_every(self, iterable, print_freq, header=None):
         i = 0
         if not header:
-            header = ''
+            header = ""
         start_time = time.time()
         end = time.time()
-        iter_time = SmoothedValue(fmt='{avg:.6f}')
-        data_time = SmoothedValue(fmt='{avg:.6f}')
-        space_fmt = ':' + str(len(str(len(iterable)))) + 'd'
+        iter_time = SmoothedValue(fmt="{avg:.6f}")
+        data_time = SmoothedValue(fmt="{avg:.6f}")
+        space_fmt = ":" + str(len(str(len(iterable)))) + "d"
         if torch.cuda.is_available():
-            log_msg = self.delimiter.join([
-                header,
-                '[{0' + space_fmt + '}/{1}]',
-                'eta: {eta}',
-                '{meters}',
-                'time: {time}',
-                'data: {data}',
-                'max mem: {memory:.0f}'
-            ])
+            log_msg = self.delimiter.join(
+                [
+                    header,
+                    "[{0" + space_fmt + "}/{1}]",
+                    "eta: {eta}",
+                    "{meters}",
+                    "time: {time}",
+                    "data: {data}",
+                    "max mem: {memory:.0f}",
+                ]
+            )
         else:
-            log_msg = self.delimiter.join([
-                header,
-                '[{0' + space_fmt + '}/{1}]',
-                'eta: {eta}',
-                '{meters}',
-                'time: {time}',
-                'data: {data}'
-            ])
+            log_msg = self.delimiter.join(
+                [header, "[{0" + space_fmt + "}/{1}]", "eta: {eta}", "{meters}", "time: {time}", "data: {data}"]
+            )
         MB = 1024.0 * 1024.0
         for obj in iterable:
             data_time.update(time.time() - end)
@@ -443,38 +413,45 @@ class MetricLogger(object):
                 eta_seconds = iter_time.global_avg * (len(iterable) - i)
                 eta_string = str(datetime.timedelta(seconds=int(eta_seconds)))
                 if torch.cuda.is_available():
-                    print(log_msg.format(
-                        i, len(iterable), eta=eta_string,
-                        meters=str(self),
-                        time=str(iter_time), data=str(data_time),
-                        memory=torch.cuda.max_memory_allocated() / MB))
+                    print(
+                        log_msg.format(
+                            i,
+                            len(iterable),
+                            eta=eta_string,
+                            meters=str(self),
+                            time=str(iter_time),
+                            data=str(data_time),
+                            memory=torch.cuda.max_memory_allocated() / MB,
+                        )
+                    )
                 else:
-                    print(log_msg.format(
-                        i, len(iterable), eta=eta_string,
-                        meters=str(self),
-                        time=str(iter_time), data=str(data_time)))
+                    print(
+                        log_msg.format(
+                            i, len(iterable), eta=eta_string, meters=str(self), time=str(iter_time), data=str(data_time)
+                        )
+                    )
             i += 1
             end = time.time()
         total_time = time.time() - start_time
         total_time_str = str(datetime.timedelta(seconds=int(total_time)))
-        print('{} Total time: {} ({:.6f} s / it)'.format(
-            header, total_time_str, total_time / len(iterable)))
+        print(f"{header} Total time: {total_time_str} ({total_time / len(iterable):.6f} s / it)")
 
 
 def get_sha():
     cwd = os.path.dirname(os.path.abspath(__file__))
 
     def _run(command):
-        return subprocess.check_output(command, cwd=cwd).decode('ascii').strip()
-    sha = 'N/A'
+        return subprocess.check_output(command, cwd=cwd).decode("ascii").strip()
+
+    sha = "N/A"
     diff = "clean"
-    branch = 'N/A'
+    branch = "N/A"
     try:
-        sha = _run(['git', 'rev-parse', 'HEAD'])
-        subprocess.check_output(['git', 'diff'], cwd=cwd)
-        diff = _run(['git', 'diff-index', 'HEAD'])
-        diff = "has uncommited changes" if diff else "clean"
-        branch = _run(['git', 'rev-parse', '--abbrev-ref', 'HEAD'])
+        sha = _run(["git", "rev-parse", "HEAD"])
+        subprocess.check_output(["git", "diff"], cwd=cwd)
+        diff = _run(["git", "diff-index", "HEAD"])
+        diff = "has uncommitted changes" if diff else "clean"
+        branch = _run(["git", "rev-parse", "--abbrev-ref", "HEAD"])
     except Exception:
         pass
     message = f"sha: {sha}, status: {diff}, branch: {branch}"
@@ -484,9 +461,7 @@ def get_sha():
 def is_dist_avail_and_initialized():
     if not dist.is_available():
         return False
-    if not dist.is_initialized():
-        return False
-    return True
+    return dist.is_initialized()
 
 
 def get_world_size():
@@ -511,14 +486,13 @@ def save_on_master(*args, **kwargs):
 
 
 def setup_for_distributed(is_master):
-    """
-    This function disables printing when not in master process
-    """
+    """This function disables printing when not in master process."""
     import builtins as __builtin__
+
     builtin_print = __builtin__.print
 
     def print(*args, **kwargs):
-        force = kwargs.pop('force', False)
+        force = kwargs.pop("force", False)
         if is_master or force:
             builtin_print(*args, **kwargs)
 
@@ -527,23 +501,23 @@ def setup_for_distributed(is_master):
 
 def init_distributed_mode(args):
     # launched with torch.distributed.launch
-    if 'RANK' in os.environ and 'WORLD_SIZE' in os.environ:
+    if "RANK" in os.environ and "WORLD_SIZE" in os.environ:
         args.rank = int(os.environ["RANK"])
-        args.world_size = int(os.environ['WORLD_SIZE'])
-        args.gpu = int(os.environ['LOCAL_RANK'])
+        args.world_size = int(os.environ["WORLD_SIZE"])
+        args.gpu = int(os.environ["LOCAL_RANK"])
     # launched with submitit on a slurm cluster
-    elif 'SLURM_PROCID' in os.environ:
-        args.rank = int(os.environ['SLURM_PROCID'])
+    elif "SLURM_PROCID" in os.environ:
+        args.rank = int(os.environ["SLURM_PROCID"])
         args.gpu = args.rank % torch.cuda.device_count()
     # launched naively with `python main_dino.py`
     # we manually add MASTER_ADDR and MASTER_PORT to env variables
     elif torch.cuda.is_available():
-        print('Will run the code on one GPU.')
+        print("Will run the code on one GPU.")
         args.rank, args.gpu, args.world_size = 0, 0, 1
-        os.environ['MASTER_ADDR'] = '127.0.0.1'
-        os.environ['MASTER_PORT'] = '29500'
+        os.environ["MASTER_ADDR"] = "127.0.0.1"
+        os.environ["MASTER_PORT"] = "29500"
     else:
-        print('Does not support training without GPU.')
+        print("Does not support training without GPU.")
         sys.exit(1)
 
     dist.init_process_group(
@@ -554,20 +528,19 @@ def init_distributed_mode(args):
     )
 
     torch.cuda.set_device(args.gpu)
-    print('| distributed init (rank {}): {}'.format(
-        args.rank, args.dist_url), flush=True)
+    print(f"| distributed init (rank {args.rank}): {args.dist_url}", flush=True)
     dist.barrier()
     setup_for_distributed(args.rank == 0)
 
 
 def accuracy(output, target, topk=(1,)):
-    """Computes the accuracy over the k top predictions for the specified values of k"""
+    """Computes the accuracy over the k top predictions for the specified values of k."""
     maxk = max(topk)
     batch_size = target.size(0)
     _, pred = output.topk(maxk, 1, True, True)
     pred = pred.t()
     correct = pred.eq(target.reshape(1, -1).expand_as(pred))
-    return [correct[:k].reshape(-1).float().sum(0) * 100. / batch_size for k in topk]
+    return [correct[:k].reshape(-1).float().sum(0) * 100.0 / batch_size for k in topk]
 
 
 def _no_grad_trunc_normal_(tensor, mean, std, a, b):
@@ -575,12 +548,14 @@ def _no_grad_trunc_normal_(tensor, mean, std, a, b):
     # Method based on https://people.sc.fsu.edu/~jburkardt/presentations/truncated_normal.pdf
     def norm_cdf(x):
         # Computes standard normal cumulative distribution function
-        return (1. + math.erf(x / math.sqrt(2.))) / 2.
+        return (1.0 + math.erf(x / math.sqrt(2.0))) / 2.0
 
     if (mean < a - 2 * std) or (mean > b + 2 * std):
-        warnings.warn("mean is more than 2 std from [a, b] in nn.init.trunc_normal_. "
-                      "The distribution of values may be incorrect.",
-                      stacklevel=2)
+        warnings.warn(
+            "mean is more than 2 std from [a, b] in nn.init.trunc_normal_. "
+            "The distribution of values may be incorrect.",
+            stacklevel=2,
+        )
 
     with torch.no_grad():
         # Values are generated by using a truncated uniform distribution and
@@ -598,7 +573,7 @@ def _no_grad_trunc_normal_(tensor, mean, std, a, b):
         tensor.erfinv_()
 
         # Transform to proper mean, std
-        tensor.mul_(std * math.sqrt(2.))
+        tensor.mul_(std * math.sqrt(2.0))
         tensor.add_(mean)
 
         # Clamp to ensure it's in the proper range
@@ -606,63 +581,73 @@ def _no_grad_trunc_normal_(tensor, mean, std, a, b):
         return tensor
 
 
-def trunc_normal_(tensor, mean=0., std=1., a=-2., b=2.):
+def trunc_normal_(tensor, mean=0.0, std=1.0, a=-2.0, b=2.0):
     # type: (Tensor, float, float, float, float) -> Tensor
     return _no_grad_trunc_normal_(tensor, mean, std, a, b)
 
 
 class LARS(torch.optim.Optimizer):
-    """
-    Almost copy-paste from https://github.com/facebookresearch/barlowtwins/blob/main/main.py
-    """
-    def __init__(self, params, lr=0, weight_decay=0, momentum=0.9, eta=0.001,
-                 weight_decay_filter=None, lars_adaptation_filter=None):
-        defaults = dict(lr=lr, weight_decay=weight_decay, momentum=momentum,
-                        eta=eta, weight_decay_filter=weight_decay_filter,
-                        lars_adaptation_filter=lars_adaptation_filter)
+    """Almost copy-paste from https://github.com/facebookresearch/barlowtwins/blob/main/main.py."""
+
+    def __init__(
+        self,
+        params,
+        lr=0,
+        weight_decay=0,
+        momentum=0.9,
+        eta=0.001,
+        weight_decay_filter=None,
+        lars_adaptation_filter=None,
+    ):
+        defaults = {
+            "lr": lr,
+            "weight_decay": weight_decay,
+            "momentum": momentum,
+            "eta": eta,
+            "weight_decay_filter": weight_decay_filter,
+            "lars_adaptation_filter": lars_adaptation_filter,
+        }
         super().__init__(params, defaults)
 
     @torch.no_grad()
     def step(self):
         for g in self.param_groups:
-            for p in g['params']:
+            for p in g["params"]:
                 dp = p.grad
 
                 if dp is None:
                     continue
 
                 if p.ndim != 1:
-                    dp = dp.add(p, alpha=g['weight_decay'])
+                    dp = dp.add(p, alpha=g["weight_decay"])
 
                 if p.ndim != 1:
                     param_norm = torch.norm(p)
                     update_norm = torch.norm(dp)
                     one = torch.ones_like(param_norm)
-                    q = torch.where(param_norm > 0.,
-                                    torch.where(update_norm > 0,
-                                                (g['eta'] * param_norm / update_norm), one), one)
+                    q = torch.where(
+                        param_norm > 0.0, torch.where(update_norm > 0, (g["eta"] * param_norm / update_norm), one), one
+                    )
                     dp = dp.mul(q)
 
                 param_state = self.state[p]
-                if 'mu' not in param_state:
-                    param_state['mu'] = torch.zeros_like(p)
-                mu = param_state['mu']
-                mu.mul_(g['momentum']).add_(dp)
+                if "mu" not in param_state:
+                    param_state["mu"] = torch.zeros_like(p)
+                mu = param_state["mu"]
+                mu.mul_(g["momentum"]).add_(dp)
 
-                p.add_(mu, alpha=-g['lr'])
+                p.add_(mu, alpha=-g["lr"])
 
 
 class MultiCropWrapper(nn.Module):
-    """
-    Perform forward pass separately on each resolution input.
-    The inputs corresponding to a single resolution are clubbed and single
-    forward is run on the same resolution inputs. Hence we do several
-    forward passes = number of different resolutions used. We then
-    concatenate all the output features and run the head forward on these
+    """Perform forward pass separately on each resolution input. The inputs corresponding to a single resolution are
+    clubbed and single forward is run on the same resolution inputs. Hence we do several forward passes = number of
+    different resolutions used. We then concatenate all the output features and run the head forward on these
     concatenated features.
     """
+
     def __init__(self, backbone, head):
-        super(MultiCropWrapper, self).__init__()
+        super().__init__()
         # disable layers dedicated to ImageNet labels classification
         backbone.fc, backbone.head = nn.Identity(), nn.Identity()
         self.backbone = backbone
@@ -672,13 +657,16 @@ class MultiCropWrapper(nn.Module):
         # convert to list
         if not isinstance(x, list):
             x = [x]
-        idx_crops = torch.cumsum(torch.unique_consecutive(
-            torch.tensor([inp.shape[-1] for inp in x]),
-            return_counts=True,
-        )[1], 0)
+        idx_crops = torch.cumsum(
+            torch.unique_consecutive(
+                torch.tensor([inp.shape[-1] for inp in x]),
+                return_counts=True,
+            )[1],
+            0,
+        )
         start_idx, output = 0, torch.empty(0).to(x[0].device)
         for end_idx in idx_crops:
-            _out = self.backbone(torch.cat(x[start_idx: end_idx]))
+            _out = self.backbone(torch.cat(x[start_idx:end_idx]))
             # The output is a tuple with XCiT model. See:
             # https://github.com/facebookresearch/xcit/blob/master/xcit.py#L404-L405
             if isinstance(_out, tuple):
@@ -701,7 +689,7 @@ def get_params_groups(model):
             not_regularized.append(param)
         else:
             regularized.append(param)
-    return [{'params': regularized}, {'params': not_regularized, 'weight_decay': 0.}]
+    return [{"params": regularized}, {"params": not_regularized, "weight_decay": 0.0}]
 
 
 def has_batchnorms(model):
@@ -712,19 +700,16 @@ def has_batchnorms(model):
     return False
 
 
-class PCA():
-    """
-    Class to  compute and apply PCA.
-    """
+class PCA:
+    """Class to compute and apply PCA."""
+
     def __init__(self, dim=256, whit=0.5):
         self.dim = dim
         self.whit = whit
         self.mean = None
 
     def train_pca(self, cov):
-        """
-        Takes a covariance matrix (np.ndarray) as input.
-        """
+        """Takes a covariance matrix (np.ndarray) as input."""
         d, v = np.linalg.eigh(cov)
         eps = d.max() * 1e-5
         n_0 = (d < eps).sum()
@@ -735,14 +720,14 @@ class PCA():
         totenergy = d.sum()
 
         # sort eigenvectors with eigenvalues order
-        idx = np.argsort(d)[::-1][:self.dim]
+        idx = np.argsort(d)[::-1][: self.dim]
         d = d[idx]
         v = v[:, idx]
 
         print("keeping %.2f %% of the energy" % (d.sum() / totenergy * 100.0))
 
         # for the whitening
-        d = np.diag(1. / d**self.whit)
+        d = np.diag(1.0 / d**self.whit)
 
         # principal components
         self.dvt = np.dot(d, v.T)
@@ -767,89 +752,90 @@ class PCA():
 
 
 def compute_ap(ranks, nres):
-    """
-    Computes average precision for given ranked indexes.
-    Arguments
-    ---------
-    ranks : zerro-based ranks of positive images
-    nres  : number of positive images
-    Returns
-    -------
-    ap    : average precision
-    """
+    """Computes average precision for given ranked indexes.
 
+    Arguments.
+    ---------
+    ranks : zerro-based ranks of positive images nres : number of positive images
+
+    Returns:
+        -------
+        ap: average precision
+    """
     # number of images ranked by the system
     nimgranks = len(ranks)
 
     # accumulate trapezoids in PR-plot
     ap = 0
 
-    recall_step = 1. / nres
+    recall_step = 1.0 / nres
 
     for j in np.arange(nimgranks):
         rank = ranks[j]
 
         if rank == 0:
-            precision_0 = 1.
+            precision_0 = 1.0
         else:
             precision_0 = float(j) / rank
 
         precision_1 = float(j + 1) / (rank + 1)
 
-        ap += (precision_0 + precision_1) * recall_step / 2.
+        ap += (precision_0 + precision_1) * recall_step / 2.0
 
     return ap
 
 
-def compute_map(ranks, gnd, kappas=[]):
-    """
-    Computes the mAP for a given set of returned results.
-         Usage:
+def compute_map(ranks, gnd, kappas=None):
+    """Computes the mAP for a given set of returned results.
+
+    Examples:
            map = compute_map (ranks, gnd)
-                 computes mean average precsion (map) only
+                 computes mean average precision (map) only
            map, aps, pr, prs = compute_map (ranks, gnd, kappas)
                  computes mean average precision (map), average precision (aps) for each query
                  computes mean precision at kappas (pr), precision at kappas (prs) for each query
-         Notes:
-         1) ranks starts from 0, ranks.shape = db_size X #queries
-         2) The junk results (e.g., the query itself) should be declared in the gnd stuct array
-         3) If there are no positive images for some query, that query is excluded from the evaluation
-    """
 
-    map = 0.
-    nq = len(gnd) # number of queries
+    Notes:
+         1) ranks starts from 0, ranks.shape = db_size X #queries
+         2) The junk results (e.g., the query itself) should be declared in the gnd struct array
+         3) If there are no positive images for some query, that query is excluded from the evaluation.
+    """
+    if kappas is None:
+        kappas = []
+    map = 0.0
+    nq = len(gnd)  # number of queries
     aps = np.zeros(nq)
     pr = np.zeros(len(kappas))
     prs = np.zeros((nq, len(kappas)))
     nempty = 0
 
     for i in np.arange(nq):
-        qgnd = np.array(gnd[i]['ok'])
+        qgnd = np.array(gnd[i]["ok"])
 
         # no positive images, skip from the average
         if qgnd.shape[0] == 0:
-            aps[i] = float('nan')
-            prs[i, :] = float('nan')
+            aps[i] = float("nan")
+            prs[i, :] = float("nan")
             nempty += 1
             continue
 
         try:
-            qgndj = np.array(gnd[i]['junk'])
+            qgndj = np.array(gnd[i]["junk"])
         except:
             qgndj = np.empty(0)
 
         # sorted positions of positive and junk images (0 based)
-        pos  = np.arange(ranks.shape[0])[np.in1d(ranks[:,i], qgnd)]
-        junk = np.arange(ranks.shape[0])[np.in1d(ranks[:,i], qgndj)]
+        pos = np.arange(ranks.shape[0])[np.in1d(ranks[:, i], qgnd)]
+        junk = np.arange(ranks.shape[0])[np.in1d(ranks[:, i], qgndj)]
 
-        k = 0;
-        ij = 0;
+        k = 0
+        ij = 0
         if len(junk):
             # decrease positions of positives based on the number of
             # junk images appearing before them
             ip = 0
-            while (ip < len(pos)):
-                while (ij < len(junk) and pos[ip] > junk[ij]):
+            while ip < len(pos):
+                while ij < len(junk) and pos[ip] > junk[ij]:
                     k += 1
                     ij += 1
                 pos[ip] = pos[ip] - k
@@ -861,9 +847,9 @@ def compute_map(ranks, gnd, kappas=[]):
         aps[i] = ap
 
         # compute precision @ k
-        pos += 1 # get it to 1-based
+        pos += 1  # get it to 1-based
         for j in np.arange(len(kappas)):
-            kq = min(max(pos), kappas[j]); 
+            kq = min(max(pos), kappas[j])
             prs[i, j] = (pos <= kq).sum() / kq
         pr = pr + prs[i, :]
 
@@ -875,11 +861,11 @@ def compute_map(ranks, gnd, kappas=[]):
 
 def multi_scale(samples, model):
     v = None
-    for s in [1, 1/2**(1/2), 1/2]:  # we use 3 different scales
+    for s in [1, 1 / 2 ** (1 / 2), 1 / 2]:  # we use 3 different scales
         if s == 1:
             inp = samples.clone()
         else:
-            inp = nn.functional.interpolate(samples, scale_factor=s, mode='bilinear', align_corners=False)
+            inp = nn.functional.interpolate(samples, scale_factor=s, mode="bilinear", align_corners=False)
         feats = model(inp).clone()
         if v is None:
             v = feats
@@ -889,9 +875,11 @@ def multi_scale(samples, model):
     v /= v.norm()
     return v
 
-class AverageMeter(object):
-    """Computes and stores the average and current value"""
-    def __init__(self, name, fmt=':f'):
+
+class AverageMeter:
+    """Computes and stores the average and current value."""
+
+    def __init__(self, name, fmt=":f"):
         self.name = name
         self.fmt = fmt
         self.reset()
@@ -909,11 +897,11 @@ class AverageMeter(object):
         self.avg = self.sum / self.count
 
     def __str__(self):
-        fmtstr = '{name} {val' + self.fmt + '} ({avg' + self.fmt + '})'
+        fmtstr = "{name} {val" + self.fmt + "} ({avg" + self.fmt + "})"
         return fmtstr.format(**self.__dict__)
 
 
-class ProgressMeter(object):
+class ProgressMeter:
     def __init__(self, num_batches, meters, prefix=""):
         self.batch_fmtstr = self._get_batch_fmtstr(num_batches)
         self.meters = meters
@@ -926,28 +914,28 @@ class ProgressMeter(object):
                 entries += [str(meter)]
             elif isinstance(meter, dict):
                 entries += [str(v) for (k, v) in meter.items()]
-        print('\t'.join(entries))
+        print("\t".join(entries))
 
     def _get_batch_fmtstr(self, num_batches):
         num_digits = len(str(num_batches // 1))
-        fmt = '{:' + str(num_digits) + 'd}'
-        return '[' + fmt + '/' + fmt.format(num_batches) + ']'
+        fmt = "{:" + str(num_digits) + "d}"
+        return "[" + fmt + "/" + fmt.format(num_batches) + "]"
 
 
 def adjust_learning_rate(optimizer, epoch, args):
-    """Decay the learning rate based on schedule"""
+    """Decay the learning rate based on schedule."""
     lr = args.lr
     if args.cos:  # cosine lr schedule
-        lr *= 0.5 * (1. + math.cos(math.pi * epoch / args.epochs))
+        lr *= 0.5 * (1.0 + math.cos(math.pi * epoch / args.epochs))
     else:  # stepwise lr schedule
         for milestone in args.schedule:
-            lr *= 0.1 if epoch >= milestone else 1.
+            lr *= 0.1 if epoch >= milestone else 1.0
     for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
+        param_group["lr"] = lr
 
 
 def accuracy(output, target, topk=(1,)):
-    """Computes the accuracy over the k top predictions for the specified values of k"""
+    """Computes the accuracy over the k top predictions for the specified values of k."""
     with torch.no_grad():
         maxk = max(topk)
         batch_size = target.size(0)
@@ -962,36 +950,33 @@ def accuracy(output, target, topk=(1,)):
             res.append(correct_k.mul_(100.0 / batch_size))
         return res
 
+
 # utils
 @torch.no_grad()
 def concat_all_gather(tensor):
+    """Performs all_gather operation on the provided tensors. *** Warning ***: torch.distributed.all_gather has no
+    gradient.
     """
-    Performs all_gather operation on the provided tensors.
-    *** Warning ***: torch.distributed.all_gather has no gradient.
-    """
-    tensors_gather = [torch.ones_like(tensor)
-                      for _ in range(torch.distributed.get_world_size())]
+    tensors_gather = [torch.ones_like(tensor) for _ in range(torch.distributed.get_world_size())]
     torch.distributed.all_gather(tensors_gather, tensor, async_op=False)
 
     output = torch.cat(tensors_gather, dim=0)
     return output
 
-def mining_metrics(query_labels, queue_labels, mining_mask):
-    """
-    Calculating the quality of mining given query labels, queue labels and mining mask.
 
-    query_labels: torch.LongTensor([N_bs])
-    queue_labels: torch.LongTensor([N_queue])
-    mining_mask: [N_bs, N_queue]
+def mining_metrics(query_labels, queue_labels, mining_mask):
+    """Calculating the quality of mining given query labels, queue labels and mining mask.
+
+    query_labels: torch.LongTensor([N_bs]) queue_labels: torch.LongTensor([N_queue]) mining_mask: [N_bs, N_queue]
     """
     gt_mask = torch.eq(query_labels.view(-1, 1), queue_labels.view(1, -1))
     mining_mask = mining_mask.to(torch.bool)
-    removal_mask = ~mining_mask # reverse the mask as "removal mask"
-    tp = ((gt_mask) & (removal_mask)).sum() # same class removed
-    fp = ((~gt_mask) & (removal_mask)).sum() # not same class, but removed
-    fn = ((gt_mask) & (~removal_mask)).sum() # same class, kept
-    tn = ((~gt_mask) & (~removal_mask)).sum() # different class, kept
-    
+    removal_mask = ~mining_mask  # reverse the mask as "removal mask"
+    tp = ((gt_mask) & (removal_mask)).sum()  # same class removed
+    fp = ((~gt_mask) & (removal_mask)).sum()  # not same class, but removed
+    fn = ((gt_mask) & (~removal_mask)).sum()  # same class, kept
+    tn = ((~gt_mask) & (~removal_mask)).sum()  # different class, kept
+
     pr = tp / (tp + fn + 1e-10)
     pp = tp / (tp + fp + 1e-10)
     nr = tn / (tn + fp + 1e-10)
@@ -1000,5 +985,3 @@ def mining_metrics(query_labels, queue_labels, mining_mask):
         return None, None, nr, np
     else:
         return pr, pp, nr, np
-
-
