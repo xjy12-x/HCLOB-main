@@ -1,5 +1,6 @@
 import os
-os.environ['KMP_DUPLICATE_LIB_OK'] = 'TRUE'
+
+os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
 
 # 简化修复代码，移除复杂的DLL手动加载
 try:
@@ -8,77 +9,67 @@ except ImportError as e:
     print(f"NumPy导入警告: {e}")
     # 尝试继续运行，可能部分功能受限但不会完全崩溃
 import os
-os.environ['CUDA_VISIBLE_DEVICES'] = '0'
-os.environ['WORLD_SIZE'] = '1'
-os.environ['RANK'] = '0'
-import argparse
-import builtins
-import builtins
-import logging
+
+os.environ["CUDA_VISIBLE_DEVICES"] = "0"
+os.environ["WORLD_SIZE"] = "1"
+os.environ["RANK"] = "0"
+import ctypes
 import math
 import os
-import random
 import shutil
+import sys
 import time
-import warnings
-from tqdm import tqdm
-import numpy as np
+
 import faiss
+import hcsc
+import hcsc.loader
+import numpy as np
 import torch
-import torch.nn as nn
-import torch.nn.parallel
-import torch.backends.cudnn as cudnn
 import torch.distributed as dist
+import torch.nn.parallel
 import torch.optim
 import torch.utils.data
 import torch.utils.data.distributed
-import torchvision.models as models
-from datetime import timedelta
-
-import math
-import os, sys
-import numpy as np
-import torch
-import hcsc.loader
-import hcsc
 from hcsc.hcsc import HCSC
-
 from hcsc.logger import EasyLogger
+from torch import nn
+from torch.backends import cudnn
+from torchvision import models
+from tqdm import tqdm
 from utils.options import parse_args_main
 from utils.utils import init_distributed_mode
-import ctypes
-import sys
-import os
+
 
 def fix_numpy_import():
     # 尝试加载必要的DLL
     try:
         # MKL核心库
-        ctypes.CDLL('mkl_core.dll', mode=ctypes.RTLD_GLOBAL)
-        ctypes.CDLL('mkl_sequential.dll', mode=ctypes.RTLD_GLOBAL)
-        ctypes.CDLL('mkl_intel_thread.dll', mode=ctypes.RTLD_GLOBAL)
+        ctypes.CDLL("mkl_core.dll", mode=ctypes.RTLD_GLOBAL)
+        ctypes.CDLL("mkl_sequential.dll", mode=ctypes.RTLD_GLOBAL)
+        ctypes.CDLL("mkl_intel_thread.dll", mode=ctypes.RTLD_GLOBAL)
     except OSError:
         pass
-    
+
     # 添加conda库路径
     conda_path = os.path.join(sys.prefix, "Library", "bin")
     os.add_dll_directory(conda_path)
-    
+
     # 尝试导入NumPy
     try:
         import numpy as np
+
         print("NumPy成功导入！版本:", np.__version__)
         return True
     except ImportError as e:
         print("NumPy导入失败:", e)
         return False
 
+
 if __name__ == "__main__":
     if fix_numpy_import():
         print("修复成功！")
     else:
         print("修复失败，请尝试其他方法")
-
 
 
 def build_model(args, logger):
@@ -94,12 +85,13 @@ def build_model(args, logger):
         args.instance_selection,
         args.proto_selection,
         args.selection_on_local,
-        logger)
+        logger,
+    )
     return model
+
 
 def build_dataloaders(args):
     return getattr(hcsc.loader, args.dataset)(args)
-
 
 
 # def build_optimizer(args, model):
@@ -107,6 +99,7 @@ def build_dataloaders(args):
 #     ## scale up the batch size
 #     args.lr = args.lr * total_batch_size / 256
 #     print("total batch size is {}, lr is scaled up to {}".format(total_batch_size, args.lr))
+
 
 #     optimizer = torch.optim.SGD(model.parameters(), args.lr,
 #                             momentum=args.momentum,
@@ -118,34 +111,33 @@ def build_optimizer(args, model):
         total_batch_size = args.batch_size * dist.get_world_size()
     else:
         total_batch_size = args.batch_size  # 单GPU模式
-    
+
     # scale up the batch size
     args.lr = args.lr * total_batch_size / 256
-    print("total batch size is {}, lr is scaled up to {}".format(total_batch_size, args.lr))
+    print(f"total batch size is {total_batch_size}, lr is scaled up to {args.lr}")
 
-    optimizer = torch.optim.SGD(model.parameters(), args.lr,
-                            momentum=args.momentum,
-                            weight_decay=args.weight_decay)
+    optimizer = torch.optim.SGD(model.parameters(), args.lr, momentum=args.momentum, weight_decay=args.weight_decay)
     return optimizer
+
 
 def main():
     args = parse_args_main()
     init_distributed_mode(args)
-    if not hasattr(args, 'device'):
+    if not hasattr(args, "device"):
         if torch.cuda.is_available():
-            args.device = torch.device('cuda:0')
+            args.device = torch.device("cuda:0")
             print(f"备用设置: 使用GPU {args.device}")
         else:
-            args.device = torch.device('cpu')
+            args.device = torch.device("cpu")
             print("备用设置: 使用CPU")
-      # 只在分布式模式下调用barrier
+    # 只在分布式模式下调用barrier
     if args.distributed:
         dist.barrier()
 
-    args.num_cluster = args.num_cluster.split(',')
+    args.num_cluster = args.num_cluster.split(",")
     if not os.path.exists(args.exp_dir):
         os.makedirs(args.exp_dir, exist_ok=True)
-    
+
     logger = EasyLogger(args.exp_dir, 0, args.rank)
     # create dataset
     train_loader, eval_loader, train_dataset, eval_dataset, train_sampler = build_dataloaders(args)
@@ -154,20 +146,18 @@ def main():
     # 只在分布式模式下调用barrier
     if args.distributed:
         dist.barrier()
-    
+
     args.dataset_size = len(train_dataset)
     # create model
     if args.rank == 0:
-        print("=> creating model '{}'".format(args.arch))
+        print(f"=> creating model '{args.arch}'")
     model = build_model(args, logger)
     model = model.to(args.device)
     # model = torch.nn.parallel.DistributedDataParallel(model, device_ids=[args.local_rank], output_device=args.local_rank)
     # 只在分布式模式下使用DistributedDataParallel
     if args.distributed:
         model = torch.nn.parallel.DistributedDataParallel(
-            model, 
-            device_ids=[args.local_rank], 
-            output_device=args.local_rank
+            model, device_ids=[args.local_rank], output_device=args.local_rank
         )
     else:
         # 单GPU模式，使用DataParallel或直接使用模型
@@ -179,66 +169,68 @@ def main():
 
     optimizer = build_optimizer(args, model)
     scheduler = adjust_learning_rate
-    
+
     # optionally resume from a checkpoint
     if args.resume:
         if os.path.isfile(args.resume):
-            print("=> loading checkpoint '{}'".format(args.resume))
+            print(f"=> loading checkpoint '{args.resume}'")
             checkpoint = torch.load(args.resume, map_location=args.device)
 
-            args.start_epoch = checkpoint['epoch']
-            model.load_state_dict(checkpoint['state_dict'], strict=False)
+            args.start_epoch = checkpoint["epoch"]
+            model.load_state_dict(checkpoint["state_dict"], strict=False)
             if "optimizer" in checkpoint:
-                optimizer.load_state_dict(checkpoint['optimizer'])
+                optimizer.load_state_dict(checkpoint["optimizer"])
             else:
                 print("No optimizer state!")
-            print("=> loaded checkpoint '{}' (epoch {})"
-                  .format(args.resume, checkpoint['epoch']))
+            print("=> loaded checkpoint '{}' (epoch {})".format(args.resume, checkpoint["epoch"]))
         else:
-            print("=> no checkpoint found at '{}'".format(args.resume))
+            print(f"=> no checkpoint found at '{args.resume}'")
 
     cudnn.benchmark = True
 
-
     # 在训练循环中
     for epoch in range(args.start_epoch, args.epochs):
-      logger.set_epoch(epoch)
+        logger.set_epoch(epoch)
     # if hasattr(model.module, "set_epoch"):
     #     model.module.set_epoch(epoch)
-    if hasattr(model, 'module') and hasattr(model.module, "set_epoch"):
+    if hasattr(model, "module") and hasattr(model.module, "set_epoch"):
         model.module.set_epoch(epoch)
     elif hasattr(model, "set_epoch"):
         model.set_epoch(epoch)
     cluster_result = None
-    
+
     if epoch >= args.warmup_epoch:
         # ... 特征计算和聚类代码
-        
+
         # 只在分布式模式下广播聚类结果
         if args.distributed and dist.is_initialized():
-            dist.barrier()  
-            for k, data_list in cluster_result.items():
-                for data_tensor in data_list:                
+            dist.barrier()
+            for data_list in cluster_result.values():
+                for data_tensor in data_list:
                     dist.broadcast(data_tensor, 0, async_op=False)
-    
+
     # 只在分布式模式下设置采样器epoch
     if args.distributed and train_sampler is not None:
         train_sampler.set_epoch(epoch)
-    
+
     scheduler(optimizer, epoch, args)
-    
+
     # 训练一个epoch
     train(train_loader, model, criterion, optimizer, epoch, args, cluster_result)
-    
+
     # 只在rank 0保存检查点
-    if (epoch+1)%5==0 and (not args.distributed or args.rank == 0):
-        save_checkpoint({
-            'epoch': epoch + 1,
-            'arch': args.arch,
-            'state_dict': model.state_dict(),
-            'optimizer' : optimizer.state_dict(),
-        }, is_best=False, filename='{}/checkpoint_{:04d}.pth.tar'.format(args.exp_dir,epoch))
-    
+    if (epoch + 1) % 5 == 0 and (not args.distributed or args.rank == 0):
+        save_checkpoint(
+            {
+                "epoch": epoch + 1,
+                "arch": args.arch,
+                "state_dict": model.state_dict(),
+                "optimizer": optimizer.state_dict(),
+            },
+            is_best=False,
+            filename=f"{args.exp_dir}/checkpoint_{epoch:04d}.pth.tar",
+        )
+
     for epoch in range(args.start_epoch, args.epochs):
         logger.set_epoch(epoch)
         if hasattr(model.module, "set_epoch"):
@@ -246,59 +238,67 @@ def main():
         cluster_result = None
         if epoch >= args.warmup_epoch:
             # compute momentum features for center-cropped images
-            features = compute_features(eval_loader, model, args)         
+            features = compute_features(eval_loader, model, args)
             # placeholder for clustering result
-            cluster_result = {'im2cluster':[],'centroids':[],'density':[], 'cluster2cluster': [], 'logits': []}
+            cluster_result = {"im2cluster": [], "centroids": [], "density": [], "cluster2cluster": [], "logits": []}
             for i, num_cluster in enumerate(args.num_cluster):
-                cluster_result['im2cluster'].append(torch.zeros(len(eval_dataset),dtype=torch.long).cuda())
-                cluster_result['centroids'].append(torch.zeros(int(num_cluster),args.dim).cuda())
-                cluster_result['density'].append(torch.zeros(int(num_cluster)).cuda())
+                cluster_result["im2cluster"].append(torch.zeros(len(eval_dataset), dtype=torch.long).cuda())
+                cluster_result["centroids"].append(torch.zeros(int(num_cluster), args.dim).cuda())
+                cluster_result["density"].append(torch.zeros(int(num_cluster)).cuda())
                 if i < (len(args.num_cluster) - 1):
-                    cluster_result['cluster2cluster'].append(torch.zeros(int(num_cluster), dtype=torch.long).cuda())
-                    cluster_result['logits'].append(torch.zeros([int(num_cluster), int(args.num_cluster[i+1])]).cuda())
+                    cluster_result["cluster2cluster"].append(torch.zeros(int(num_cluster), dtype=torch.long).cuda())
+                    cluster_result["logits"].append(
+                        torch.zeros([int(num_cluster), int(args.num_cluster[i + 1])]).cuda()
+                    )
             if dist.get_rank() == 0:
-                features[torch.norm(features,dim=1)>1.5] /= 2 
+                features[torch.norm(features, dim=1) > 1.5] /= 2
                 features = features.numpy()
-                cluster_result = run_hkmeans(features,args)  
+                cluster_result = run_hkmeans(features, args)
                 # save the clustering result
                 try:
-                    torch.save(cluster_result,os.path.join(args.exp_dir, 'clusters_%d'%epoch))  
+                    torch.save(cluster_result, os.path.join(args.exp_dir, "clusters_%d" % epoch))
                 except:
                     pass
-            dist.barrier()  
+            dist.barrier()
             # broadcast clustering result
-            for k, data_list in cluster_result.items():
-                for data_tensor in data_list:                
-                    dist.broadcast(data_tensor, 0, async_op=False)   
-            
+            for data_list in cluster_result.values():
+                for data_tensor in data_list:
+                    dist.broadcast(data_tensor, 0, async_op=False)
+
         train_sampler.set_epoch(epoch)
         scheduler(optimizer, epoch, args)
 
         # train for one epoch
         train(train_loader, model, criterion, optimizer, epoch, args, cluster_result)
 
-        if (epoch+1)%5==0 and dist.get_rank()==0:
-            save_checkpoint({
-                'epoch': epoch + 1,
-                'arch': args.arch,
-                'state_dict': model.state_dict(),
-                'optimizer' : optimizer.state_dict(),
-            }, is_best=False, filename='{}/checkpoint_{:04d}.pth.tar'.format(args.exp_dir,epoch))
+        if (epoch + 1) % 5 == 0 and dist.get_rank() == 0:
+            save_checkpoint(
+                {
+                    "epoch": epoch + 1,
+                    "arch": args.arch,
+                    "state_dict": model.state_dict(),
+                    "optimizer": optimizer.state_dict(),
+                },
+                is_best=False,
+                filename=f"{args.exp_dir}/checkpoint_{epoch:04d}.pth.tar",
+            )
+
 
 def train(train_loader, model, criterion, optimizer, epoch, args, cluster_result=None):
-    batch_time = AverageMeter('Time', ':6.3f')
-    data_time = AverageMeter('Data', ':6.3f')
-    losses = dict()
-    acc_inst = dict()
-    losses['InsLoss_sum'] = AverageMeter('InsLoss_sum', ':.4e')
-    acc_inst['Acc@Inst_avg'] = AverageMeter('Acc@Inst_avg', ':6.2f')
-    acc_proto = AverageMeter('Acc@Proto', ':6.2f')
-    buffer_meter = dict()
-    
+    batch_time = AverageMeter("Time", ":6.3f")
+    data_time = AverageMeter("Data", ":6.3f")
+    losses = {}
+    acc_inst = {}
+    losses["InsLoss_sum"] = AverageMeter("InsLoss_sum", ":.4e")
+    acc_inst["Acc@Inst_avg"] = AverageMeter("Acc@Inst_avg", ":6.2f")
+    acc_proto = AverageMeter("Acc@Proto", ":6.2f")
+    buffer_meter = {}
+
     progress = ProgressMeter(
         len(train_loader),
         [batch_time, data_time, losses, acc_inst, acc_proto, buffer_meter],
-        prefix="Epoch: [{}]".format(epoch))
+        prefix=f"Epoch: [{epoch}]",
+    )
 
     # switch to train mode
     model.train()
@@ -308,35 +308,42 @@ def train(train_loader, model, criterion, optimizer, epoch, args, cluster_result
         # measure data loading time
         data_time.update(time.time() - end)
         images = [image.to(args.device) for image in images]
-                
+
         # compute output
-        output, target, output_proto, target_proto, local_logits, local_labels, local_proto_logits, local_proto_targets = model(images, 
-                                                                                cluster_result=cluster_result, 
-                                                                                index=index)
+        (
+            output,
+            target,
+            output_proto,
+            target_proto,
+            local_logits,
+            local_labels,
+            local_proto_logits,
+            local_proto_targets,
+        ) = model(images, cluster_result=cluster_result, index=index)
 
         # InfoNCE loss
-        loss = 0.
+        loss = 0.0
         if isinstance(target, list):
-            loss_total = 0.
+            loss_total = 0.0
             for k, (out, tar) in enumerate(zip(output, target)):
                 loss = criterion(out, tar)
                 loss_total += loss
-                if f'InsLoss_{k}' not in buffer_meter:
-                    buffer_meter[f'InsLoss_{k}'] = AverageMeter(f'InsLoss_{k}', ':.4e')
-                buffer_meter[f'InsLoss_{k}'].update(loss.item(), images[0].size(0))
-                acc = accuracy(out, tar)[0] 
-                if f'Acc@Inst{k}' not in buffer_meter:
-                    buffer_meter[f'Acc@Inst{k}'] = AverageMeter(f'Acc@Inst{k}', ":6.2f")
-                buffer_meter[f'Acc@Inst{k}'].update(acc[0], images[0].size(0))
-                losses['InsLoss_sum'].update(loss.item(), images[0].size(0))
-                acc_inst['Acc@Inst_avg'].update(acc[0], images[0].size(0))
+                if f"InsLoss_{k}" not in buffer_meter:
+                    buffer_meter[f"InsLoss_{k}"] = AverageMeter(f"InsLoss_{k}", ":.4e")
+                buffer_meter[f"InsLoss_{k}"].update(loss.item(), images[0].size(0))
+                acc = accuracy(out, tar)[0]
+                if f"Acc@Inst{k}" not in buffer_meter:
+                    buffer_meter[f"Acc@Inst{k}"] = AverageMeter(f"Acc@Inst{k}", ":6.2f")
+                buffer_meter[f"Acc@Inst{k}"].update(acc[0], images[0].size(0))
+                losses["InsLoss_sum"].update(loss.item(), images[0].size(0))
+                acc_inst["Acc@Inst_avg"].update(acc[0], images[0].size(0))
                 loss = loss_total
         else:
-            loss = criterion(output, target)  
-            losses['InsLoss_sum'].update(loss.item(), images[0].size(0))
-            acc = accuracy(output, target)[0] 
-            acc_inst['Acc@Inst_avg'].update(acc[0], images[0].size(0))
-        
+            loss = criterion(output, target)
+            losses["InsLoss_sum"].update(loss.item(), images[0].size(0))
+            acc = accuracy(output, target)[0]
+            acc_inst["Acc@Inst_avg"].update(acc[0], images[0].size(0))
+
         # InfoNCE Loss on local views with multi-crop
         if local_logits is not None:
             # print("local nce")
@@ -346,20 +353,20 @@ def train(train_loader, model, criterion, optimizer, epoch, args, cluster_result
                 acc_local = accuracy(local_logit, local_target)[0]
                 if f"acc_local{vid}" not in buffer_meter:
                     buffer_meter[f"acc_local{vid}"] = AverageMeter(f"acc_local{vid}", ":6.4f")
-                
+
                 buffer_meter[f"acc_local{vid}"].update(acc_local[0], images[0].size(0))
             loss += loss_local
 
         # HProtoNCE loss
         if output_proto is not None:
             loss_proto = 0
-            for proto_out,proto_target in zip(output_proto, target_proto):
-                loss_proto += criterion(proto_out, proto_target)  
-                accp = accuracy(proto_out, proto_target)[0] 
+            for proto_out, proto_target in zip(output_proto, target_proto):
+                loss_proto += criterion(proto_out, proto_target)
+                accp = accuracy(proto_out, proto_target)[0]
                 acc_proto.update(accp[0], images[0].size(0))
-                
+
             # average loss across all sets of prototypes
-            loss_proto /= len(args.num_cluster) 
+            loss_proto /= len(args.num_cluster)
             loss += loss_proto
 
         # HProtoNCE Loss on local views
@@ -374,7 +381,7 @@ def train(train_loader, model, criterion, optimizer, epoch, args, cluster_result
                     buffer_meter[f"proto_acc_local{vid}"].update(accp[0], images[0].size(0))
             loss_local_proto /= len(args.num_cluster)
             loss += loss_local_proto
-        
+
         # compute gradient and do SGD step
         optimizer.zero_grad()
         loss.backward()
@@ -384,35 +391,33 @@ def train(train_loader, model, criterion, optimizer, epoch, args, cluster_result
         batch_time.update(time.time() - end)
         end = time.time()
 
-        if i % args.print_freq == 0:
-            if dist.get_rank() == 0:
-                progress.display(i)
+        if i % args.print_freq == 0 and dist.get_rank() == 0:
+            progress.display(i)
+
 
 def compute_features(eval_loader, model, args):
-    print('Computing features...')
+    print("Computing features...")
     model.eval()
-    features = torch.zeros(len(eval_loader.dataset),args.dim).cuda()
+    features = torch.zeros(len(eval_loader.dataset), args.dim).cuda()
     for i, (images, index) in enumerate(tqdm(eval_loader)):
         with torch.no_grad():
             images = images.cuda(non_blocking=True)
             feat = model(images, is_eval=True)
             features[index] = feat
-    dist.barrier()        
+    dist.barrier()
     dist.all_reduce(features, op=dist.ReduceOp.SUM)
     return features.cpu()
 
+
 def run_hkmeans(x, args):
+    """This function is a hierarchical k-means: the centroids of current hierarchy is used to perform k-means in next
+    step.
     """
-    This function is a hierarchical 
-    k-means: the centroids of current hierarchy is used
-    to perform k-means in next step
-    """
-    
-    print('performing kmeans clustering')
-    results = {'im2cluster':[],'centroids':[],'density':[], 'cluster2cluster':[], 'logits':[]}
-    
+    print("performing kmeans clustering")
+    results = {"im2cluster": [], "centroids": [], "density": [], "cluster2cluster": [], "logits": []}
+
     for seed, num_cluster in enumerate(args.num_cluster):
-        # intialize faiss clustering parameters
+        # initialize faiss clustering parameters
         d = x.shape[1]
         k = int(num_cluster)
         clus = faiss.Clustering(d, k)
@@ -426,77 +431,77 @@ def run_hkmeans(x, args):
         res = faiss.StandardGpuResources()
         cfg = faiss.GpuIndexFlatConfig()
         cfg.useFloat16 = False
-        cfg.device = args.local_rank  
-        index = faiss.GpuIndexFlatL2(res, d, cfg)  
-        if seed==0: # the first hierarchy from instance directly
-            clus.train(x, index)   
-            D, I = index.search(x, 1) # for each sample, find cluster distance and assignments
+        cfg.device = args.local_rank
+        index = faiss.GpuIndexFlatL2(res, d, cfg)
+        if seed == 0:  # the first hierarchy from instance directly
+            clus.train(x, index)
+            D, I = index.search(x, 1)  # for each sample, find cluster distance and assignments
         else:
             # the input of higher hierarchy is the centorid of lower one
-            clus.train(results['centroids'][seed - 1].cpu().numpy(), index)
-            D, I = index.search(results['centroids'][seed - 1].cpu().numpy(), 1)
-        
+            clus.train(results["centroids"][seed - 1].cpu().numpy(), index)
+            D, I = index.search(results["centroids"][seed - 1].cpu().numpy(), 1)
+
         im2cluster = [int(n[0]) for n in I]
-        # sample-to-centroid distances for each cluster 
+        # sample-to-centroid distances for each cluster
         ## centroid in lower level to higher level
-        Dcluster = [[] for c in range(k)]          
-        for im,i in enumerate(im2cluster):
+        Dcluster = [[] for c in range(k)]
+        for im, i in enumerate(im2cluster):
             Dcluster[i].append(D[im][0])
 
-       # get cluster centroids
-        centroids = faiss.vector_to_array(clus.centroids).reshape(k,d)
+        # get cluster centroids
+        centroids = faiss.vector_to_array(clus.centroids).reshape(k, d)
 
-        if seed>0: # the im2cluster of higher hierarchy is the index of previous hierachy
-            im2cluster = np.array(im2cluster) # enable batch indexing
-            results['cluster2cluster'].append(torch.LongTensor(im2cluster).cuda())
-            im2cluster = im2cluster[results['im2cluster'][seed - 1].cpu().numpy()]
+        if seed > 0:  # the im2cluster of higher hierarchy is the index of previous hierarchy
+            im2cluster = np.array(im2cluster)  # enable batch indexing
+            results["cluster2cluster"].append(torch.LongTensor(im2cluster).cuda())
+            im2cluster = im2cluster[results["im2cluster"][seed - 1].cpu().numpy()]
             im2cluster = list(im2cluster)
-    
-        if len(set(im2cluster))==1:
+
+        if len(set(im2cluster)) == 1:
             print("Warning! All samples are assigned to one cluster")
 
-        # concentration estimation (phi)        
+        # concentration estimation (phi)
         density = np.zeros(k)
-        for i,dist in enumerate(Dcluster):
-            if len(dist)>1:
-                d = (np.asarray(dist)**0.5).mean()/np.log(len(dist)+10)            
-                density[i] = d     
-                
-        #if cluster only has one point, use the max to estimate its concentration        
-        dmax = density.max()
-        for i,dist in enumerate(Dcluster):
-            if len(dist)<=1:
-                density[i] = dmax 
+        for i, dist in enumerate(Dcluster):
+            if len(dist) > 1:
+                d = (np.asarray(dist) ** 0.5).mean() / np.log(len(dist) + 10)
+                density[i] = d
 
-        density = density.clip(np.percentile(density,10),np.percentile(density,90)) 
-        density = args.T*density/density.mean() 
-        
+        # if cluster only has one point, use the max to estimate its concentration
+        dmax = density.max()
+        for i, dist in enumerate(Dcluster):
+            if len(dist) <= 1:
+                density[i] = dmax
+
+        density = density.clip(np.percentile(density, 10), np.percentile(density, 90))
+        density = args.T * density / density.mean()
+
         # convert to cuda Tensors for broadcast
         centroids = torch.Tensor(centroids).cuda()
-        centroids = nn.functional.normalize(centroids, p=2, dim=1)    
-        if seed > 0: #maintain a logits from lower prototypes to higher
-            proto_logits = torch.mm(results['centroids'][-1], centroids.t())
-            results['logits'].append(proto_logits.cuda())
-
+        centroids = nn.functional.normalize(centroids, p=2, dim=1)
+        if seed > 0:  # maintain a logits from lower prototypes to higher
+            proto_logits = torch.mm(results["centroids"][-1], centroids.t())
+            results["logits"].append(proto_logits.cuda())
 
         density = torch.Tensor(density).cuda()
-        im2cluster = torch.LongTensor(im2cluster).cuda()    
-        results['centroids'].append(centroids)
-        results['density'].append(density)
-        results['im2cluster'].append(im2cluster)    
-        
+        im2cluster = torch.LongTensor(im2cluster).cuda()
+        results["centroids"].append(centroids)
+        results["density"].append(density)
+        results["im2cluster"].append(im2cluster)
+
     return results
 
-    
-def save_checkpoint(state, is_best, filename='checkpoint.pth.tar'):
+
+def save_checkpoint(state, is_best, filename="checkpoint.pth.tar"):
     torch.save(state, filename)
     if is_best:
-        shutil.copyfile(filename, 'model_best.pth.tar')
+        shutil.copyfile(filename, "model_best.pth.tar")
 
 
-class AverageMeter(object):
-    """Computes and stores the average and current value"""
-    def __init__(self, name, fmt=':f'):
+class AverageMeter:
+    """Computes and stores the average and current value."""
+
+    def __init__(self, name, fmt=":f"):
         self.name = name
         self.fmt = fmt
         self.reset()
@@ -514,11 +519,11 @@ class AverageMeter(object):
         self.avg = self.sum / self.count
 
     def __str__(self):
-        fmtstr = '{name} {val' + self.fmt + '} ({avg' + self.fmt + '})'
+        fmtstr = "{name} {val" + self.fmt + "} ({avg" + self.fmt + "})"
         return fmtstr.format(**self.__dict__)
 
 
-class ProgressMeter(object):
+class ProgressMeter:
     def __init__(self, num_batches, meters, prefix=""):
         self.batch_fmtstr = self._get_batch_fmtstr(num_batches)
         self.meters = meters
@@ -531,26 +536,28 @@ class ProgressMeter(object):
                 entries += [str(meter)]
             elif isinstance(meter, dict):
                 entries += [str(v) for (k, v) in meter.items()]
-        print('\t'.join(entries))
+        print("\t".join(entries))
 
     def _get_batch_fmtstr(self, num_batches):
         num_digits = len(str(num_batches // 1))
-        fmt = '{:' + str(num_digits) + 'd}'
-        return '[' + fmt + '/' + fmt.format(num_batches) + ']'
+        fmt = "{:" + str(num_digits) + "d}"
+        return "[" + fmt + "/" + fmt.format(num_batches) + "]"
+
 
 def adjust_learning_rate(optimizer, epoch, args):
-    """Decay the learning rate based on schedule"""
+    """Decay the learning rate based on schedule."""
     lr = args.lr
     if args.cos:  # cosine lr schedule
-        lr = args.lr_final + 0.5 * (1. + math.cos(math.pi * epoch / args.epochs)) * (args.lr - args.lr_final)
+        lr = args.lr_final + 0.5 * (1.0 + math.cos(math.pi * epoch / args.epochs)) * (args.lr - args.lr_final)
     else:  # stepwise lr schedule
         for milestone in args.schedule:
-            lr *= 0.1 if epoch >= milestone else 1.
+            lr *= 0.1 if epoch >= milestone else 1.0
     for param_group in optimizer.param_groups:
-        param_group['lr'] = lr
+        param_group["lr"] = lr
+
 
 def accuracy(output, target, topk=(1,)):
-    """Computes the accuracy over the k top predictions for the specified values of k"""
+    """Computes the accuracy over the k top predictions for the specified values of k."""
     with torch.no_grad():
         maxk = max(topk)
         batch_size = target.size(0)
@@ -566,5 +573,5 @@ def accuracy(output, target, topk=(1,)):
         return res
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     main()

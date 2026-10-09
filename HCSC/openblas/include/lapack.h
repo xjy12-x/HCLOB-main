@@ -6917,7 +6917,7 @@ void LAPACK_cheequb_base(
     lapack_int const* n,
     lapack_complex_float const* A, lapack_int const* lda,
     float* S,
-    float* scond,
+    float* second,
     float* amax,
     lapack_complex_float* work,
     lapack_int* info
@@ -6937,7 +6937,7 @@ void LAPACK_zheequb_base(
     lapack_int const* n,
     lapack_complex_double const* A, lapack_int const* lda,
     double* S,
-    double* scond,
+    double* second,
     double* amax,
     lapack_complex_double* work,
     lapack_int* info
@@ -12137,7 +12137,7 @@ void LAPACK_cpbequ_base(
     lapack_int const* n, lapack_int const* kd,
     lapack_complex_float const* AB, lapack_int const* ldab,
     float* S,
-    float* scond,
+    float* second,
     float* amax,
     lapack_int* info
 #ifdef LAPACK_FORTRAN_STRLEN_END
@@ -12156,7 +12156,7 @@ void LAPACK_dpbequ_base(
     lapack_int const* n, lapack_int const* kd,
     double const* AB, lapack_int const* ldab,
     double* S,
-    double* scond,
+    double* second,
     double* amax,
     lapack_int* info
 #ifdef LAPACK_FORTRAN_STRLEN_END
@@ -12175,7 +12175,7 @@ void LAPACK_spbequ_base(
     lapack_int const* n, lapack_int const* kd,
     float const* AB, lapack_int const* ldab,
     float* S,
-    float* scond,
+    float* second,
     float* amax,
     lapack_int* info
 #ifdef LAPACK_FORTRAN_STRLEN_END
@@ -12194,7 +12194,7 @@ void LAPACK_zpbequ_base(
     lapack_int const* n, lapack_int const* kd,
     lapack_complex_double const* AB, lapack_int const* ldab,
     double* S,
-    double* scond,
+    double* second,
     double* amax,
     lapack_int* info
 #ifdef LAPACK_FORTRAN_STRLEN_END
@@ -12948,7 +12948,7 @@ void LAPACK_cpoequ(
     lapack_int const* n,
     lapack_complex_float const* A, lapack_int const* lda,
     float* S,
-    float* scond,
+    float* second,
     float* amax,
     lapack_int* info );
 
@@ -12957,7 +12957,7 @@ void LAPACK_dpoequ(
     lapack_int const* n,
     double const* A, lapack_int const* lda,
     double* S,
-    double* scond,
+    double* second,
     double* amax,
     lapack_int* info );
 
@@ -12966,7 +12966,7 @@ void LAPACK_spoequ(
     lapack_int const* n,
     float const* A, lapack_int const* lda,
     float* S,
-    float* scond,
+    float* second,
     float* amax,
     lapack_int* info );
 
@@ -12975,7 +12975,7 @@ void LAPACK_zpoequ(
     lapack_int const* n,
     lapack_complex_double const* A, lapack_int const* lda,
     double* S,
-    double* scond,
+    double* second,
     double* amax,
     lapack_int* info );
 
@@ -12984,7 +12984,7 @@ void LAPACK_cpoequb(
     lapack_int const* n,
     lapack_complex_float const* A, lapack_int const* lda,
     float* S,
-    float* scond,
+    float* second,
     float* amax,
     lapack_int* info );
 
@@ -12993,7 +12993,7 @@ void LAPACK_dpoequb(
     lapack_int const* n,
     double const* A, lapack_int const* lda,
     double* S,
-    double* scond,
+    double* second,
     double* amax,
     lapack_int* info );
 
@@ -13002,7 +13002,7 @@ void LAPACK_spoequb(
     lapack_int const* n,
     float const* A, lapack_int const* lda,
     float* S,
-    float* scond,
+    float* second,
     float* amax,
     lapack_int* info );
 
@@ -13011,7 +13011,7 @@ void LAPACK_zpoequb(
     lapack_int const* n,
     lapack_complex_double const* A, lapack_int const* lda,
     double* S,
-    double* scond,
+    double* second,
     double* amax,
     lapack_int* info );
 
@@ -13954,7 +13954,7 @@ void LAPACK_cppequ_base(
     lapack_int const* n,
     lapack_complex_float const* AP,
     float* S,
-    float* scond,
+    float* second,
     float* amax,
     lapack_int* info
 #ifdef LAPACK_FORTRAN_STRLEN_END
@@ -13973,7 +13973,7 @@ void LAPACK_dppequ_base(
     lapack_int const* n,
     double const* AP,
     double* S,
-    double* scond,
+    double* second,
     double* amax,
     lapack_int* info
 #ifdef LAPACK_FORTRAN_STRLEN_END
@@ -13992,7 +13992,7 @@ void LAPACK_sppequ_base(
     lapack_int const* n,
     float const* AP,
     float* S,
-    float* scond,
+    float* second,
     float* amax,
     lapack_int* info
 #ifdef LAPACK_FORTRAN_STRLEN_END
@@ -14011,7 +14011,7 @@ void LAPACK_zppequ_base(
     lapack_int const* n,
     lapack_complex_double const* AP,
     double* S,
-    double* scond,
+    double* second,
     double* amax,
     lapack_int* info
 #ifdef LAPACK_FORTRAN_STRLEN_END
@@ -17180,7 +17180,7 @@ void LAPACK_csyequb_base(
     lapack_int const* n,
     lapack_complex_float const* A, lapack_int const* lda,
     float* S,
-    float* scond,
+    float* second,
     float* amax,
     lapack_complex_float* work,
     lapack_int* info
@@ -17200,7 +17200,7 @@ void LAPACK_dsyequb_base(
     lapack_int const* n,
     double const* A, lapack_int const* lda,
     double* S,
-    double* scond,
+    double* second,
     double* amax,
     double* work,
     lapack_int* info
@@ -17220,7 +17220,7 @@ void LAPACK_ssyequb_base(
     lapack_int const* n,
     float const* A, lapack_int const* lda,
     float* S,
-    float* scond,
+    float* second,
     float* amax,
     float* work,
     lapack_int* info
@@ -17240,7 +17240,7 @@ void LAPACK_zsyequb_base(
     lapack_int const* n,
     lapack_complex_double const* A, lapack_int const* lda,
     double* S,
-    double* scond,
+    double* second,
     double* amax,
     lapack_complex_double* work,
     lapack_int* info

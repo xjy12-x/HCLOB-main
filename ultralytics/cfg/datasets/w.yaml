@@ -22,7 +22,6 @@ names:
   3: van
   4: person
 
-
 # Download script/URL (optional) ---------------------------------------------------------------------------------------
 download: |
   import os
