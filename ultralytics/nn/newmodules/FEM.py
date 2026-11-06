@@ -1,8 +1,7 @@
-import math
 import torch
-import torch.nn as nn
+from torch import nn
 
-'''
+"""
 来自TGRS 2024  一区 遥感小目标检测任务论文  采用的是YOLO模型发的2024年顶刊 
 
 特征增强模块（FEM）作用及原理：
@@ -23,7 +22,8 @@ FFM设计了自上而下和自下而上的特征流动策略，实现浅层到�
 最终通过广播Hadamard积实现通道和空间上下文信息的融合。
 
 
-'''
+"""
+
 
 def autopad(k, p=None, d=1):  # kernel, padding, dilation
     # Pad to 'same' shape outputs
@@ -32,6 +32,8 @@ def autopad(k, p=None, d=1):  # kernel, padding, dilation
     if p is None:
         p = k // 2 if isinstance(k, int) else [x // 2 for x in k]  # auto-pad
     return p
+
+
 class Conv(nn.Module):
     # Standard convolution with args(ch_in, ch_out, kernel, stride, padding, groups, dilation, activation)
     default_act = nn.SiLU()  # default activation
@@ -47,6 +49,8 @@ class Conv(nn.Module):
 
     def forward_fuse(self, x):
         return self.act(self.conv(x))
+
+
 class Conv_withoutBN(nn.Module):
     # Standard convolution with args(ch_in, ch_out, kernel, stride, padding, groups, dilation, activation)
     default_act = nn.SiLU()  # default activation
@@ -58,13 +62,34 @@ class Conv_withoutBN(nn.Module):
 
     def forward(self, x):
         return self.act(self.conv(x))
+
+
 class BasicConv(nn.Module):
-    def __init__(self, in_planes, out_planes, kernel_size, stride=1, padding=0, dilation=1, groups=1, relu=True,
-                 bn=True, bias=False):
-        super(BasicConv, self).__init__()
+    def __init__(
+        self,
+        in_planes,
+        out_planes,
+        kernel_size,
+        stride=1,
+        padding=0,
+        dilation=1,
+        groups=1,
+        relu=True,
+        bn=True,
+        bias=False,
+    ):
+        super().__init__()
         self.out_channels = out_planes
-        self.conv = nn.Conv2d(in_planes, out_planes, kernel_size=kernel_size, stride=stride, padding=padding,
-                              dilation=dilation, groups=groups, bias=bias)
+        self.conv = nn.Conv2d(
+            in_planes,
+            out_planes,
+            kernel_size=kernel_size,
+            stride=stride,
+            padding=padding,
+            dilation=dilation,
+            groups=groups,
+            bias=bias,
+        )
         self.bn = nn.BatchNorm2d(out_planes, eps=1e-5, momentum=0.01, affine=True) if bn else None
         self.relu = nn.ReLU(inplace=True) if relu else None
 
@@ -75,9 +100,11 @@ class BasicConv(nn.Module):
         if self.relu is not None:
             x = self.relu(x)
         return x
+
+
 class SCAM(nn.Module):
     def __init__(self, in_channels, reduction=1):
-        super(SCAM, self).__init__()
+        super().__init__()
         self.in_channels = in_channels
         self.inter_channels = in_channels
 
@@ -118,8 +145,8 @@ class SCAM(nn.Module):
 
 
 class FFM_Concat2(nn.Module):
-    def __init__(self, dimension=1, Channel1 = 1, Channel2 = 1):
-        super(FFM_Concat2, self).__init__()
+    def __init__(self, dimension=1, Channel1=1, Channel2=1):
+        super().__init__()
         self.d = dimension
         self.Channel1 = Channel1
         self.Channel2 = Channel2
@@ -134,7 +161,7 @@ class FFM_Concat2(nn.Module):
         N1, C1, H1, W1 = x[0].size()
         N2, C2, H2, W2 = x[1].size()
 
-        w = self.w[:(C1 + C2)] # 加了这一行可以确保能够剪枝
+        w = self.w[: (C1 + C2)]  # 加了这一行可以确保能够剪枝
         weight = w / (torch.sum(w, dim=0) + self.epsilon)  # 将权重进行归一化
         # Fast normalized fusion
 
@@ -143,9 +170,10 @@ class FFM_Concat2(nn.Module):
         x = [x1, x2]
         return torch.cat(x, self.d)
 
+
 class FFM_Concat3(nn.Module):
-    def __init__(self, dimension=1, Channel1 = 1, Channel2 = 1, Channel3 = 1):
-        super(FFM_Concat3, self).__init__()
+    def __init__(self, dimension=1, Channel1=1, Channel2=1, Channel3=1):
+        super().__init__()
         self.d = dimension
         self.Channel1 = Channel1
         self.Channel2 = Channel2
@@ -159,39 +187,39 @@ class FFM_Concat3(nn.Module):
         N2, C2, H2, W2 = x[1].size()
         N3, C3, H3, W3 = x[2].size()
 
-        w = self.w[:(C1 + C2 + C3)]  # 加了这一行可以确保能够剪枝
+        w = self.w[: (C1 + C2 + C3)]  # 加了这一行可以确保能够剪枝
         weight = w / (torch.sum(w, dim=0) + self.epsilon)  # 将权重进行归一化
         # Fast normalized fusion
 
         x1 = (weight[:C1] * x[0].view(N1, H1, W1, C1)).view(N1, C1, H1, W1)
-        x2 = (weight[C1:(C1 + C2)] * x[1].view(N2, H2, W2, C2)).view(N2, C2, H2, W2)
-        x3 = (weight[(C1 + C2):] * x[2].view(N3, H3, W3, C3)).view(N3, C3, H3, W3)
+        x2 = (weight[C1 : (C1 + C2)] * x[1].view(N2, H2, W2, C2)).view(N2, C2, H2, W2)
+        x3 = (weight[(C1 + C2) :] * x[2].view(N3, H3, W3, C3)).view(N3, C3, H3, W3)
         x = [x1, x2, x3]
         return torch.cat(x, self.d)
 
 
 class FEM(nn.Module):
     def __init__(self, in_planes, stride=1, scale=0.1, map_reduce=8):
-        out_planes=in_planes
-        super(FEM, self).__init__()
+        out_planes = in_planes
+        super().__init__()
         self.scale = scale
         self.out_channels = out_planes
         inter_planes = in_planes // map_reduce
         self.branch0 = nn.Sequential(
             BasicConv(in_planes, 2 * inter_planes, kernel_size=1, stride=stride),
-            BasicConv(2 * inter_planes, 2 * inter_planes, kernel_size=3, stride=1, padding=1, relu=False)
+            BasicConv(2 * inter_planes, 2 * inter_planes, kernel_size=3, stride=1, padding=1, relu=False),
         )
         self.branch1 = nn.Sequential(
             BasicConv(in_planes, inter_planes, kernel_size=1, stride=1),
             BasicConv(inter_planes, (inter_planes // 2) * 3, kernel_size=(1, 3), stride=stride, padding=(0, 1)),
             BasicConv((inter_planes // 2) * 3, 2 * inter_planes, kernel_size=(3, 1), stride=stride, padding=(1, 0)),
-            BasicConv(2 * inter_planes, 2 * inter_planes, kernel_size=3, stride=1, padding=5, dilation=5, relu=False)
+            BasicConv(2 * inter_planes, 2 * inter_planes, kernel_size=3, stride=1, padding=5, dilation=5, relu=False),
         )
         self.branch2 = nn.Sequential(
             BasicConv(in_planes, inter_planes, kernel_size=1, stride=1),
             BasicConv(inter_planes, (inter_planes // 2) * 3, kernel_size=(3, 1), stride=stride, padding=(1, 0)),
             BasicConv((inter_planes // 2) * 3, 2 * inter_planes, kernel_size=(1, 3), stride=stride, padding=(0, 1)),
-            BasicConv(2 * inter_planes, 2 * inter_planes, kernel_size=3, stride=1, padding=5, dilation=5, relu=False)
+            BasicConv(2 * inter_planes, 2 * inter_planes, kernel_size=3, stride=1, padding=5, dilation=5, relu=False),
         )
 
         self.ConvLinear = BasicConv(6 * inter_planes, out_planes, kernel_size=1, stride=1, relu=False)
@@ -210,10 +238,12 @@ class FEM(nn.Module):
         out = self.relu(out)
 
         return out
+
+
 # 输入 N C H W,  输出 N C H W
-if __name__ == '__main__':
+if __name__ == "__main__":
     # 初始化 FEM 模块并设定通道维度
-    FEM_module = FEM(32,64)
+    FEM_module = FEM(32, 64)
     # 创建一个随机输入张量，假设批量大小为1，通道数为32，图像尺寸为64x64
     input = torch.randn(1, 32, 64, 64)
     # 将输入张量传入 FEM 模块
