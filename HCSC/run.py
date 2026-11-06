@@ -1,6 +1,5 @@
 # F:\contrast-11\run_hcsc.py
 import sys
-import os
 from pathlib import Path
 
 # 添加当前目录到Python路径
@@ -9,6 +8,7 @@ sys.path.insert(0, str(current_dir))
 
 try:
     from .main import main
+
     if __name__ == "__main__":
         main()
 except ImportError as e:

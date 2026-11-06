@@ -47,17 +47,14 @@ head:
   - [[-1, 10], 1, Concat, [1]] # cat head P5 #21
   - [-1, 2, C3k2, [1024, True]] # 22 (P5/32-large)
 
-
   - [[4, 6, 8], 1, DynamicScalSeq, [256]] # 23 args[inchane]
   - [[16, -1], 1, Add, []] #24 cat head P5
 
-  - [-1, 1, nn.Upsample, [None, 2, 'nearest']] # 25
-  - [[-1, 2], 1, Concat, []]  # 26  cat backbone P2
+  - [-1, 1, nn.Upsample, [None, 2, "nearest"]] # 25
+  - [[-1, 2], 1, Concat, []] # 26  cat backbone P2
   - [-1, 2, C3k2, [128, False]] #27
 
   - [[2, 24, 19], 1, DynamicScalSeq, [128]] # 28 args[inchane] #29
   - [[-1, 28], 1, Add, []] # 29
-
-
 
   - [[29, 24, 19, 22], 1, Detect, [nc]] # Detect(P3, P4, P5)

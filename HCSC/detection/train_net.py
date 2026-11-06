@@ -1,7 +1,5 @@
 #!/usr/bin/env python
-"""
-adopted from https://github.com/facebookresearch/moco/tree/master/detection
-"""
+"""adopted from https://github.com/facebookresearch/moco/tree/master/detection."""
 
 import os
 
@@ -15,10 +13,9 @@ from detectron2.modeling.roi_heads import ROI_HEADS_REGISTRY, Res5ROIHeads
 
 @ROI_HEADS_REGISTRY.register()
 class Res5ROIHeadsExtraNorm(Res5ROIHeads):
+    """As described in the MOCO paper, there is an extra BN layer following the res5 stage.
     """
-    As described in the MOCO paper, there is an extra BN layer
-    following the res5 stage.
-    """
+
     def _build_res5_block(self, cfg):
         seq, out_channels = super()._build_res5_block(cfg)
         norm = cfg.MODEL.RESNETS.NORM
@@ -53,9 +50,7 @@ def main(args):
 
     if args.eval_only:
         model = Trainer.build_model(cfg)
-        DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(
-            cfg.MODEL.WEIGHTS, resume=args.resume
-        )
+        DetectionCheckpointer(model, save_dir=cfg.OUTPUT_DIR).resume_or_load(cfg.MODEL.WEIGHTS, resume=args.resume)
         res = Trainer.test(cfg, model)
         return res
 
