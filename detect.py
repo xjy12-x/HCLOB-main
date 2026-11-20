@@ -1,17 +1,17 @@
 from ultralytics import YOLO
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     # 加载模型
-    model = YOLO(r'F:/contrast-11/runs/train/exp164/weights/best.pt')  # YOLOv8n模型
+    model = YOLO(r"F:/contrast-11/runs/train/exp164/weights/best.pt")  # YOLOv8n模型
     model.predict(
-        source=r'.//datasets//C-M1340//images//train',
+        source=r".//datasets//C-M1340//images//train",
         save=True,  # 保存预测结果
         imgsz=640,  # 输入图像的大小，可以是整数或w，h
         conf=0.25,  # 用于检测的目标置信度阈值（默认为0.25，用于预测，0.001用于验证）
         iou=0.45,  # 非极大值抑制 (NMS) 的交并比 (IoU) 阈值
         show=False,  # 如果可能的话，显示结果
-        project='runs/predict',  # 项目名称（可选）
-        name='exp',  # 实验名称，结果保存在'project/name'目录下（可选）
+        project="runs/predict",  # 项目名称（可选）
+        name="exp",  # 实验名称，结果保存在'project/name'目录下（可选）
         save_txt=False,  # 保存结果为 .txt 文件
         save_conf=True,  # 保存结果和置信度分数
         save_crop=False,  # 保存裁剪后的图像和结果

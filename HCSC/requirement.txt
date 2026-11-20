@@ -1,5 +1,5 @@
 argparse
-torch==1.8.1+cu102
+torch==2.14.1
 torchvision==0.9.1+cu102
 numpy
 faiss-gpu
