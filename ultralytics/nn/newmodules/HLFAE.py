@@ -1,37 +1,40 @@
 import torch
+import torch.nn.functional as F
 from torch import nn
 from torch.nn import init
-import torch.nn.functional as F
+
 from ultralytics.nn.modules import C3
-__all__=['HLFAE','C2f_HLFAE','C3k2_HLFAE']
+
+__all__ = ["HLFAE", "C2f_HLFAE", "C3k2_HLFAE"]
+
 
 # 特征提取模块
 class feature_extraction(nn.Module):
     def __init__(self, in_channels):
-        super(feature_extraction, self).__init__()
+        super().__init__()
         # 1x1卷积，膨胀率为1
         self.dilate1 = nn.Sequential(
             nn.Conv2d(in_channels, in_channels, kernel_size=3, dilation=1, padding=1),  # 卷积层，膨胀率为1
             nn.BatchNorm2d(in_channels),  # 批归一化
-            nn.ReLU(inplace=True)  # 激活函数
+            nn.ReLU(inplace=True),  # 激活函数
         )
         # 1x1卷积，膨胀率为3
         self.dilate2 = nn.Sequential(
             nn.Conv2d(in_channels, in_channels, kernel_size=3, dilation=3, padding=3),  # 卷积层，膨胀率为3
             nn.BatchNorm2d(in_channels),  # 批归一化
-            nn.ReLU(inplace=True)  # 激活函数
+            nn.ReLU(inplace=True),  # 激活函数
         )
         # 1x1卷积，膨胀率为5
         self.dilate3 = nn.Sequential(
             nn.Conv2d(in_channels, in_channels, kernel_size=3, dilation=5, padding=5),  # 卷积层，膨胀率为5
             nn.BatchNorm2d(in_channels),  # 批归一化
-            nn.ReLU(inplace=True)  # 激活函数
+            nn.ReLU(inplace=True),  # 激活函数
         )
         # 1x1卷积，膨胀率为7
         self.dilate4 = nn.Sequential(
             nn.Conv2d(in_channels, in_channels, kernel_size=3, dilation=7, padding=7),  # 卷积层，膨胀率为7
             nn.BatchNorm2d(in_channels),  # 批归一化
-            nn.ReLU(inplace=True)  # 激活函数
+            nn.ReLU(inplace=True),  # 激活函数
         )
         # 对四种不同膨胀卷积的输出进行通道拼接，进行通道压缩
         self.convmlp = nn.Sequential(
@@ -40,7 +43,7 @@ class feature_extraction(nn.Module):
             nn.ReLU(inplace=True),  # 激活函数
             nn.Conv2d(2 * in_channels, in_channels, kernel_size=1),  # 卷积层，降维
             nn.BatchNorm2d(in_channels),  # 批归一化
-            nn.ReLU(inplace=True)  # 激活函数
+            nn.ReLU(inplace=True),  # 激活函数
         )
 
     def forward(self, x):
@@ -55,14 +58,17 @@ class feature_extraction(nn.Module):
         out = self.convmlp(cnn_out)
         return out
 
+
 # 结合卷积、批归一化与ReLU激活的模块
 class CBR(nn.Module):
     def __init__(self, in_c, out_c, kernel_size=3, padding=1, dilation=1, stride=1, act=True):
         super().__init__()
         self.act = act  # 是否使用ReLU激活函数
         self.conv = nn.Sequential(
-            nn.Conv2d(in_c, out_c, kernel_size, padding=padding, dilation=dilation, bias=False, stride=stride),  # 卷积层
-            nn.BatchNorm2d(out_c)  # 批归一化
+            nn.Conv2d(
+                in_c, out_c, kernel_size, padding=padding, dilation=dilation, bias=False, stride=stride
+            ),  # 卷积层
+            nn.BatchNorm2d(out_c),  # 批归一化
         )
         self.relu = nn.ReLU(inplace=True)  # 激活函数
 
@@ -71,6 +77,7 @@ class CBR(nn.Module):
         if self.act == True:  # 如果设置了激活，则进行ReLU激活
             x = self.relu(x)
         return x
+
 
 # Squeeze-and-Excitation (SE) 注意力机制模块
 class SEAttention(nn.Module):
@@ -83,14 +90,14 @@ class SEAttention(nn.Module):
             nn.Linear(channel, channel // reduction, bias=False),  # 第一层FC
             nn.ReLU(inplace=True),  # 激活函数
             nn.Linear(channel // reduction, channel, bias=False),  # 第二层FC
-            nn.Sigmoid()  # Sigmoid激活，输出通道注意力权重
+            nn.Sigmoid(),  # Sigmoid激活，输出通道注意力权重
         )
 
     # 权重初始化
     def init_weights(self):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                init.kaiming_normal_(m.weight, mode='fan_out')  # 初始化卷积层权重
+                init.kaiming_normal_(m.weight, mode="fan_out")  # 初始化卷积层权重
                 if m.bias is not None:
                     init.constant_(m.bias, 0)  # 初始化偏置
             elif isinstance(m, nn.BatchNorm2d):
@@ -107,10 +114,11 @@ class SEAttention(nn.Module):
         y = self.fc(y).view(b, c, 1, 1)  # 通过全连接层计算通道注意力
         return x * y.expand_as(x)  # 通道注意力加权输入
 
+
 # 高低频特征自适应增强模块
 class HLFAE(nn.Module):  # HLFAE高低频特征自适应增强模块
     def __init__(self, dim, ratio=16):
-        super(HLFAE, self).__init__()
+        super().__init__()
 
         self.down = nn.AvgPool2d(kernel_size=2)  # 平均池化层，用于获取低频特征
         self.high_feature = feature_extraction(dim)  # 高频特征提取模块
@@ -131,19 +139,20 @@ class HLFAE(nn.Module):  # HLFAE高低频特征自适应增强模块
     def forward(self, x):
         # 第一步：分解高频和低频特征
         low = self.down(x)  # 低频特征通过池化获得
-        high = x - F.interpolate(low, size=x.size()[-2:], mode='bilinear', align_corners=True)  # 高频特征
+        high = x - F.interpolate(low, size=x.size()[-2:], mode="bilinear", align_corners=True)  # 高频特征
         high = self.high_feature(high)  # 提取高频特征
 
         # 第二步：低频特征的增强
         avg_out = self.fc2(self.relu1(self.fc1(self.avg_pool(low))))  # 平均池化后经过FC生成注意力权重
         max_out = self.fc2(self.relu1(self.fc1(self.max_pool(low))))  # 最大池化后经过FC生成注意力权重
         low = low * self.sigmoid(avg_out + max_out)  # 低频特征加权
-        low = F.interpolate(low, size=x.size()[-2:], mode='bilinear', align_corners=True)  # 恢复原始尺寸
+        low = F.interpolate(low, size=x.size()[-2:], mode="bilinear", align_corners=True)  # 恢复原始尺寸
 
         # 第三步：融合高低频特征
         out = torch.cat([high, low], dim=1)  # 高低频特征拼接
         out = self.att(self.conv1(out)) + x  # 使用SE注意力模块处理融合后的特征，并加回输入特征
         return out
+
 
 def autopad(k, p=None, d=1):  # kernel, padding, dilation
     """Pad to 'same' shape outputs."""
@@ -156,6 +165,7 @@ def autopad(k, p=None, d=1):  # kernel, padding, dilation
 
 class Conv(nn.Module):
     """Standard convolution with args(ch_in, ch_out, kernel, stride, padding, groups, dilation, activation)."""
+
     default_act = nn.SiLU()  # default activation
 
     def __init__(self, c1, c2, k=1, s=1, p=None, g=1, d=1, act=True):
@@ -172,6 +182,8 @@ class Conv(nn.Module):
     def forward_fuse(self, x):
         """Perform transposed convolution of 2D data."""
         return self.act(self.conv(x))
+
+
 class C2f_HLFAE(nn.Module):
     """Faster Implementation of CSP Bottleneck with 2 convolutions."""
 
@@ -196,6 +208,8 @@ class C2f_HLFAE(nn.Module):
         y = list(self.cv1(x).split((self.c, self.c), 1))
         y.extend(m(y[-1]) for m in self.m)
         return self.cv2(torch.cat(y, 1))
+
+
 class C3k(C3):
     """C3k is a CSP bottleneck module with customizable kernel sizes for feature extraction in neural networks."""
 
@@ -203,7 +217,8 @@ class C3k(C3):
         """Initializes the C3k module with specified channels, number of layers, and configurations."""
         super().__init__(c1, c2, n, shortcut, g, e)
         c_ = int(c2 * e)  # hidden channels
-        self.m = nn.Sequential(*(HLFAE(c_)  for _ in range(n)))
+        self.m = nn.Sequential(*(HLFAE(c_) for _ in range(n)))
+
 
 class C3k2_HLFAE(C2f_HLFAE):
     """Faster Implementation of CSP Bottleneck with 2 convolutions."""
@@ -211,12 +226,11 @@ class C3k2_HLFAE(C2f_HLFAE):
     def __init__(self, c1, c2, n=1, c3k=False, e=0.5, g=1, shortcut=True):
         """Initializes the C3k2 module, a faster CSP Bottleneck with 2 convolutions and optional C3k blocks."""
         super().__init__(c1, c2, n, shortcut, g, e)
-        self.m = nn.ModuleList(
-            C3k(self.c, self.c, 2, shortcut, g) if c3k else HLFAE(self.c) for _ in range(n)
-        )
+        self.m = nn.ModuleList(C3k(self.c, self.c, 2, shortcut, g) if c3k else HLFAE(self.c) for _ in range(n))
+
 
 # 测试代码：输入BCHW，输出BCHW
-if __name__ == '__main__':
+if __name__ == "__main__":
     # 实例化模型对象
     model = HLFAE(dim=32)
     # 生成随机输入张量
@@ -224,5 +238,5 @@ if __name__ == '__main__':
     # 执行前向传播
     output = model(input)
     # 打印输入和输出的尺寸
-    print('input_size:', input.size())
-    print('output_size:', output.size())
+    print("input_size:", input.size())
+    print("output_size:", output.size())

@@ -1,41 +1,36 @@
 import os
+
 os.environ["KMP_DUPLICATE_LIB_OK"] = "TRUE"
-import argparse
 import os
 import time
-import logging
 from logging import getLogger
-import urllib
 
 import torch
-import torch.nn as nn
 import torch.nn.parallel
-import torch.backends.cudnn as cudnn
 import torch.optim
-import torch.utils.data as data
-import torchvision.transforms as transforms
-import torchvision.datasets as datasets
-import torchvision.models as models
+from torch import nn
+from torch.backends import cudnn
+from torchvision import datasets, models, transforms
 from utils.options import parse_semisup_args
 from utils.utils import (
+    AverageMeter,
+    accuracy,
+    fix_random_seeds,
+    init_distributed_mode,
     initialize_exp,
     restart_from_checkpoint,
-    fix_random_seeds,
-    AverageMeter,
-    init_distributed_mode,
-    accuracy,
 )
 
 logger = getLogger()
+
 
 def main():
     global args, best_acc
     args = parse_semisup_args()
     init_distributed_mode(args)
     fix_random_seeds(args.seed)
-    if args.rank==0:
-        if not os.path.exists(args.exp_dir):
-            os.makedirs(args.exp_dir)
+    if args.rank == 0 and not os.path.exists(args.exp_dir):
+        os.makedirs(args.exp_dir)
     logger, training_stats = initialize_exp(
         args, "epoch", "loss", "prec1", "prec5", "loss_val", "prec1_val", "prec5_val"
     )
@@ -44,31 +39,33 @@ def main():
     train_data_path = os.path.join(args.data_path, "train")
     train_dataset = datasets.ImageFolder(train_data_path)
     # take either 1% or 10% of images
-    subset_file = "{}percent.txt".format(args.labels_perc)
-    with open(subset_file, "r") as f:
+    subset_file = f"{args.labels_perc}percent.txt"
+    with open(subset_file) as f:
         list_imgs = f.readlines()
         list_imgs = [x.split("\n")[0] for x in list_imgs]
-    
-    train_dataset.samples = [(
-        os.path.join(train_data_path, li.split('_')[0], li),
-        train_dataset.class_to_idx[li.split('_')[0]]
-    ) for li in list_imgs]
+
+    train_dataset.samples = [
+        (os.path.join(train_data_path, li.split("_")[0], li), train_dataset.class_to_idx[li.split("_")[0]])
+        for li in list_imgs
+    ]
     val_dataset = datasets.ImageFolder(os.path.join(args.data_path, "val"))
-    tr_normalize = transforms.Normalize(
-        mean=[0.485, 0.456, 0.406], std=[0.228, 0.224, 0.225]
+    tr_normalize = transforms.Normalize(mean=[0.485, 0.456, 0.406], std=[0.228, 0.224, 0.225])
+    train_dataset.transform = transforms.Compose(
+        [
+            transforms.RandomResizedCrop(224),
+            transforms.RandomHorizontalFlip(),
+            transforms.ToTensor(),
+            tr_normalize,
+        ]
     )
-    train_dataset.transform = transforms.Compose([
-        transforms.RandomResizedCrop(224),
-        transforms.RandomHorizontalFlip(),
-        transforms.ToTensor(),
-        tr_normalize,
-    ])
-    val_dataset.transform = transforms.Compose([
-        transforms.Resize(256),
-        transforms.CenterCrop(224),
-        transforms.ToTensor(),
-        tr_normalize,
-    ])
+    val_dataset.transform = transforms.Compose(
+        [
+            transforms.Resize(256),
+            transforms.CenterCrop(224),
+            transforms.ToTensor(),
+            tr_normalize,
+        ]
+    )
     sampler = torch.utils.data.distributed.DistributedSampler(train_dataset)
     train_loader = torch.utils.data.DataLoader(
         train_dataset,
@@ -83,7 +80,7 @@ def main():
         num_workers=args.workers,
         pin_memory=True,
     )
-    logger.info("Building data done with {} images loaded.".format(len(train_dataset)))
+    logger.info(f"Building data done with {len(train_dataset)} images loaded.")
 
     # build model
     model = models.__dict__[args.arch](num_classes=1000)
@@ -99,15 +96,15 @@ def main():
         # remove prefixe "module."
         state_dict = {k.replace("module.", ""): v for k, v in state_dict.items()}
         state_dict = {k.replace("encoder_q.", ""): v for k, v in state_dict.items()}
-        
+
         for k, v in model.state_dict().items():
             if k not in list(state_dict):
-                logger.info('key "{}" could not be found in provided state dict'.format(k))
+                logger.info(f'key "{k}" could not be found in provided state dict')
             elif state_dict[k].shape != v.shape:
-                logger.info('key "{}" is of different shape in model and provided state dict'.format(k))
+                logger.info(f'key "{k}" is of different shape in model and provided state dict')
                 state_dict[k] = v
         msg = model.load_state_dict(state_dict, strict=False)
-        logger.info("Load pretrained model with msg: {}".format(msg))
+        logger.info(f"Load pretrained model with msg: {msg}")
     else:
         logger.info("No pretrained weights found => training from random weights")
 
@@ -123,24 +120,21 @@ def main():
     trunk_parameters = []
     head_parameters = []
     for name, param in model.named_parameters():
-        if 'fc' in name:
+        if "fc" in name:
             head_parameters.append(param)
         else:
             trunk_parameters.append(param)
     optimizer = torch.optim.SGD(
-        [{'params': trunk_parameters},
-         {'params': head_parameters, 'lr': args.lr_last_layer}],
+        [{"params": trunk_parameters}, {"params": head_parameters, "lr": args.lr_last_layer}],
         lr=args.lr,
         momentum=0.9,
         weight_decay=0,
     )
     # set scheduler
-    scheduler = torch.optim.lr_scheduler.MultiStepLR(
-        optimizer, args.decay_epochs, gamma=args.gamma
-    )
+    scheduler = torch.optim.lr_scheduler.MultiStepLR(optimizer, args.decay_epochs, gamma=args.gamma)
 
     # Optionally resume from a checkpoint
-    to_restore = {"epoch": 0, "best_acc": (0., 0.)}
+    to_restore = {"epoch": 0, "best_acc": (0.0, 0.0)}
     restart_from_checkpoint(
         os.path.join(args.exp_dir, "checkpoint.pth.tar"),
         run_variables=to_restore,
@@ -153,7 +147,6 @@ def main():
     cudnn.benchmark = True
 
     for epoch in range(start_epoch, args.epochs):
-
         # train the network for one epoch
         logger.info("============ Starting epoch %i ... ============" % epoch)
 
@@ -176,15 +169,14 @@ def main():
                 "best_acc": best_acc,
             }
             torch.save(save_dict, os.path.join(args.exp_dir, "checkpoint.pth.tar"))
-    logger.info("Fine-tuning with {}% of labels completed.\n"
-                "Test accuracies: top-1 {acc1:.1f}, top-5 {acc5:.1f}".format(
-                args.labels_perc, acc1=best_acc[0], acc5=best_acc[1]))
+    logger.info(
+        f"Fine-tuning with {args.labels_perc}% of labels completed.\n"
+        f"Test accuracies: top-1 {best_acc[0]:.1f}, top-5 {best_acc[1]:.1f}"
+    )
 
 
 def train(model, optimizer, loader, epoch):
-    """
-    Train the models on the dataset.
-    """
+    """Train the models on the dataset."""
     # running statistics
     batch_time = AverageMeter("time", ":.2f")
     data_time = AverageMeter("data time", ":.2f")
@@ -251,6 +243,7 @@ def train(model, optimizer, loader, epoch):
             )
     return epoch, losses.avg, top1.avg.item(), top5.avg.item()
 
+
 def validate_network(val_loader, model):
     batch_time = AverageMeter("time", ":.2f")
     losses = AverageMeter("loss", ":.3e")
@@ -266,7 +259,6 @@ def validate_network(val_loader, model):
     with torch.no_grad():
         end = time.perf_counter()
         for i, (inp, target) in enumerate(val_loader):
-
             # move to gpu
             inp = inp.cuda(non_blocking=True)
             target = target.cuda(non_blocking=True)
@@ -290,11 +282,11 @@ def validate_network(val_loader, model):
     if args.rank == 0:
         logger.info(
             "Test:\t"
-            "Time {batch_time.avg:.3f}\t"
-            "Loss {loss.avg:.4f}\t"
-            "Acc@1 {top1.avg:.3f}\t"
-            "Best Acc@1 so far {acc:.1f}".format(
-                batch_time=batch_time, loss=losses, top1=top1, acc=best_acc[0]))
+            f"Time {batch_time.avg:.3f}\t"
+            f"Loss {losses.avg:.4f}\t"
+            f"Acc@1 {top1.avg:.3f}\t"
+            f"Best Acc@1 so far {best_acc[0]:.1f}"
+        )
 
     return losses.avg, top1.avg.item(), top5.avg.item()
 

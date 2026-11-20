@@ -72,7 +72,7 @@
 #     """
 #     def __init__(self, channels, eps=1e-6):
 #         super(LayerNorm2d, self).__init__()
-        
+
 #         # 注册可训练参数：通道缩放权重（初始1）和偏置（初始0）
 #         self.register_parameter('weight', nn.Parameter(torch.ones(channels)))
 #         self.register_parameter('bias', nn.Parameter(torch.zeros(channels)))
@@ -99,44 +99,44 @@
 #         super(FreMLP, self).__init__()
 #         self.nc = nc
 #         self.expand = expand
-        
+
 #         # 频率域幅度处理模块
 #         self.process1 = nn.Sequential(
 #             nn.Conv2d(nc, expand * nc, 1, 1, 0),
 #             nn.LeakyReLU(0.1, inplace=True),
 #             nn.Conv2d(expand * nc, nc, 1, 1, 0)
 #         )
-    
+
 #     def forward(self, x):
 #         # 保存原始数据类型
 #         original_dtype = x.dtype
 #         _, _, H, W = x.shape
-        
+
 #         # 将输入转换为float32进行FFT计算
 #         x = x.to(torch.float32)
-        
+
 #         # 1. 空间域→频率域
 #         x_freq = torch.fft.rfft2(x, norm='backward')
-        
+
 #         # 2. 分离频率域的幅度和相位
 #         mag = torch.abs(x_freq)
 #         pha = torch.angle(x_freq)
-        
+
 #         # 3. 将process1模块也转换为float32
 #         process1_float = self.process1.to(torch.float32)
 #         mag = process1_float(mag)
-        
+
 #         # 4. 从幅度和相位恢复复数特征
 #         real = mag * torch.cos(pha)
 #         imag = mag * torch.sin(pha)
 #         x_out = torch.complex(real, imag)
-        
+
 #         # 5. 频率域→空间域
 #         x_out = torch.fft.irfft2(x_out, s=(H, W), norm='backward')
-        
+
 #         # 将输出转换回原始数据类型
 #         x_out = x_out.to(original_dtype)
-        
+
 #         return x_out
 # # class FreMLP(nn.Module):
 # #     """
@@ -151,7 +151,7 @@
 # #             expand: MLP中间层通道扩展倍数（默认2，增强频率特征表达）
 # #         """
 # #         super(FreMLP, self).__init__()
-        
+
 # #         # 频率域幅度处理模块（1×1卷积实现通道维度变换与特征优化）
 # #         self.process1 = nn.Sequential(
 # #             nn.Conv2d(nc, expand * nc, 1, 1, 0),  # 升维：nc → expand×nc
@@ -159,7 +159,6 @@
 # #             nn.Conv2d(expand * nc, nc, 1, 1, 0)    # 降维：expand×nc → nc（恢复原通道数）
 # #         )
 
-    
 
 #     # def forward(self, x):
 #     #     """
@@ -170,23 +169,23 @@
 #     #         x_out: 输出空间域特征，shape=(N, nc, H, W)（与输入维度一致）
 #     #     """
 #     #     _, _, H, W = x.shape
-        
+
 #     #     # 1. 空间域→频率域：二维实值快速傅里叶变换（rfft2，输出复数特征）
 #     #     # norm='backward'确保FFT与IFFT互为逆运算（无能量损失）
 #     #     x_freq = torch.fft.rfft2(x, norm='backward')  # shape=(N, nc, H, W//2+1)（复数）
-        
+
 #     #     # 2. 分离频率域的幅度（mag）和相位（pha）
 #     #     mag = torch.abs(x_freq)    # 幅度：反映频率成分的强度，shape=(N, nc, H, W//2+1)
 #     #     pha = torch.angle(x_freq)  # 相位：反映频率成分的位置，shape=(N, nc, H, W//2+1)
-        
+
 #     #     # 3. MLP处理幅度（相位保持不变，避免破坏空间位置信息）
 #     #     mag = self.process1(mag)   # 幅度优化：增强有用频率，抑制噪声频率
-        
+
 #     #     # 4. 从幅度和相位恢复复数特征
 #     #     real = mag * torch.cos(pha)  # 实部：幅度×cos(相位)
 #     #     imag = mag * torch.sin(pha)  # 虚部：幅度×sin(相位)
 #     #     x_out = torch.complex(real, imag)  # 重组复数特征，shape=(N, nc, H, W//2+1)
-        
+
 #     #     # 5. 频率域→空间域：二维逆快速傅里叶变换（irfft2，恢复实值特征）
 #     #     # s=(H,W)指定输出空间尺寸，确保与输入一致
 #     #     x_out = torch.fft.irfft2(x_out, s=(H, W), norm='backward')  # shape=(N, nc, H, W)
@@ -207,7 +206,7 @@
 #         """
 #         super().__init__()
 #         self.dw_channel = DW_Expand * c  # 深度卷积的通道数（扩展后）
-        
+
 #         # 深度卷积（groups=dw_channel，每个通道独立卷积，降低计算量）
 #         self.branch = nn.Sequential(
 #             nn.Conv2d(
@@ -240,15 +239,15 @@
 #             dilations: 扩张卷积分支的扩张率列表（默认[1]，支持多分支多尺度）
 #             extra_depth_wise: 是否添加额外深度卷积（默认False，可选增强空间细节）
 #         """
-        
+
 #         super().__init__()
 #         self.dw_channel = DW_Expand * c  # 深度卷积的扩展通道数
-        
+
 #         # 可选额外深度卷积（增强空间局部细节，默认关闭）
 #         self.extra_conv = nn.Conv2d(
 #             c, c, kernel_size=3, padding=1, stride=1, groups=c, bias=True, dilation=1
 #         ) if extra_depth_wise else nn.Identity()
-        
+
 #         # 1×1卷积：空间特征通道升维（c→dw_channel，为深度卷积做准备）
 #         self.conv1 = nn.Conv2d(
 #             in_channels=c,
@@ -260,15 +259,15 @@
 #             bias=True,
 #             dilation=1
 #         )
-        
+
 #         # 多扩张卷积分支（根据dilations列表创建，捕捉多尺度空间特征）
 #         self.branches = nn.ModuleList()
 #         for dilation in dilations:
 #             self.branches.append(Branch(c, DW_Expand, dilation=dilation))
-       
+
 #         # 校验：扩张率列表长度与分支数量一致
 #         assert len(dilations) == len(self.branches)
-        
+
 #         # 空间注意力模块（SCA：Spatial Channel Attention）：全局平均池化+1×1卷积
 #         self.sca = nn.Sequential(
 #             nn.AdaptiveAvgPool2d(1),  # 全局平均池化：(N, dw_channel//2, H, W)→(N, dw_channel//2, 1, 1)
@@ -283,9 +282,9 @@
 #                 dilation=1
 #             )  # 通道注意力：生成通道权重
 #         )
-        
+
 #         self.sg1 = SimpleGate()  # 门控机制：筛选空间特征
-        
+
 #         # 1×1卷积：空间特征通道降维（dw_channel//2→c，恢复原通道数）
 #         self.conv3 = nn.Conv2d(
 #             in_channels=self.dw_channel // 2,
@@ -297,12 +296,12 @@
 #             bias=True,
 #             dilation=1
 #         )
-        
+
 #         # 第二阶段：归一化与频率域处理
 #         self.norm1 = LayerNorm2d(c)  # 第一阶段输入归一化
 #         self.norm2 = LayerNorm2d(c)  # 第二阶段输入归一化
 #         self.freq = FreMLP(nc=c, expand=2)  # 频率域处理模块
-        
+
 #         # 特征融合参数（可训练，控制频率特征的贡献度）
 #         self.gamma = nn.Parameter(torch.zeros((1, c, 1, 1)), requires_grad=True)  # 频率特征权重
 #         self.beta = nn.Parameter(torch.zeros((1, c, 1, 1)), requires_grad=True)   # 空间特征权重
@@ -315,34 +314,34 @@
 #         Returns:
 #             x: 输出特征，shape=(N, c, H, W)（与输入维度一致）
 #         """
-        
+
 #         # 保存输入用于残差连接
 #         y = inp
-        
+
 #         # -------------------------- 第一阶段：空间域多尺度特征增强 --------------------------
 #         # 归一化→（可选）额外深度卷积→通道升维
 #         x = self.norm1(inp)  # (N,c,H,W)→(N,c,H,W)（通道归一化）
 #         x = self.conv1(self.extra_conv(x))  # (N,c,H,W)→(N,dw_channel,H,W)（升维）
-        
+
 #         # 多扩张卷积分支求和（多尺度空间特征融合）
 #         z = 0
 #         for branch in self.branches:
 #             z += branch(x)  # 每个分支输出均为(N,dw_channel,H,W)，求和后维度不变
-       
+
 #         # 门控筛选→空间注意力加权→通道降维
 #         z = self.sg1(z)  # (N,dw_channel,H,W)→(N,dw_channel//2,H,W)（通道拆分+元素乘）
 #         x = self.sca(z) * z  # 注意力加权：(N,dw_channel//2,1,1) * (N,dw_channel//2,H,W)→(N,dw_channel//2,H,W)
 #         x = self.conv3(x)  # (N,dw_channel//2,H,W)→(N,c,H,W)（降维，恢复原通道数）
-        
+
 #         # 空间特征与输入残差融合（beta控制空间特征贡献度）
 #         y = inp + self.beta * x  # (N,c,H,W) + (N,c,1,1)*(N,c,H,W)→(N,c,H,W)
 
 #         # -------------------------- 第二阶段：频率域特征增强与融合 --------------------------
-        
+
 #         # 归一化→频率域处理→特征融合
 #         x_step2 = self.norm2(y)  # (N,c,H,W)→(N,c,H,W)（归一化，稳定频率域处理）
 #         x_freq = self.freq(x_step2)  # (N,c,H,W)→(N,c,H,W)（频率域特征优化）
-        
+
 #         # 频率特征与空间特征加权融合→残差连接（gamma控制频率特征贡献度）
 #         x = y * x_freq  # 频率特征加权空间特征：(N,c,H,W)*(N,c,H,W)→(N,c,H,W)
 #         x = y + x * self.gamma  # 最终残差融合：(N,c,H,W) + (N,c,1,1)*(N,c,H,W)→(N,c,H,W)
@@ -365,34 +364,34 @@
 #     print("输入特征维度：", x.shape)
 #     print("输出特征维度：", y.shape)
 import torch
-import torch.nn as nn
+from torch import nn
+
 
 class LayerNormFunction(torch.autograd.Function):
-    """
-    自定义2D层归一化自动求导函数（比PyTorch原生LayerNorm更适配通道优先的图像特征）
-    """
+    """自定义2D层归一化自动求导函数（比PyTorch原生LayerNorm更适配通道优先的图像特征）."""
+
     @staticmethod
     def forward(ctx, x, weight, bias, eps):
         # 数值稳定性检查
         if torch.isnan(x).any() or torch.isinf(x).any():
             x = torch.nan_to_num(x, nan=0.0, posinf=1.0, neginf=-1.0)
-        
+
         ctx.eps = eps
-        N, C, H, W = x.size()
-        
+        _N, C, _H, _W = x.size()
+
         # 计算均值和方差，添加数值稳定性
         mu = x.mean(1, keepdim=True)
         var = (x - mu).pow(2).mean(1, keepdim=True)
-        
+
         # 防止除零和数值不稳定
-        var = torch.clamp(var, min=eps*10)  # 确保方差不会太小
-        
+        var = torch.clamp(var, min=eps * 10)  # 确保方差不会太小
+
         y = (x - mu) / torch.sqrt(var + eps)
-        
+
         # 数值检查
         if torch.isnan(y).any() or torch.isinf(y).any():
             y = torch.nan_to_num(y, nan=0.0, posinf=1.0, neginf=-1.0)
-        
+
         ctx.save_for_backward(y, var, weight)
         y = weight.view(1, C, 1, 1) * y + bias.view(1, C, 1, 1)
         return y
@@ -400,38 +399,38 @@ class LayerNormFunction(torch.autograd.Function):
     @staticmethod
     def backward(ctx, grad_output):
         eps = ctx.eps
-        N, C, H, W = grad_output.size()
+        _N, C, _H, _W = grad_output.size()
         y, var, weight = ctx.saved_variables
-        
+
         # 数值稳定性检查
         if torch.isnan(grad_output).any() or torch.isinf(grad_output).any():
             grad_output = torch.nan_to_num(grad_output, nan=0.0, posinf=1.0, neginf=-1.0)
-        
+
         g = grad_output * weight.view(1, C, 1, 1)
         mean_g = g.mean(dim=1, keepdim=True)
         mean_gy = (g * y).mean(dim=1, keepdim=True)
-        
+
         # 防止除零
         sqrt_var = torch.sqrt(var + eps)
-        sqrt_var = torch.clamp(sqrt_var, min=eps*10)
-        
-        gx = 1. / sqrt_var * (g - y * mean_gy - mean_g)
-        
+        sqrt_var = torch.clamp(sqrt_var, min=eps * 10)
+
+        gx = 1.0 / sqrt_var * (g - y * mean_gy - mean_g)
+
         # 数值检查
         if torch.isnan(gx).any() or torch.isinf(gx).any():
             gx = torch.nan_to_num(gx, nan=0.0, posinf=1.0, neginf=-1.0)
-        
+
         grad_weight = (grad_output * y).sum(dim=3).sum(dim=2).sum(dim=0)
         grad_bias = grad_output.sum(dim=3).sum(dim=2).sum(dim=0)
-        
+
         return gx, grad_weight, grad_bias, None
 
 
 class LayerNorm2d(nn.Module):
     def __init__(self, channels, eps=1e-5):  # 增加eps提高稳定性
-        super(LayerNorm2d, self).__init__()
-        self.register_parameter('weight', nn.Parameter(torch.ones(channels)))
-        self.register_parameter('bias', nn.Parameter(torch.zeros(channels)))
+        super().__init__()
+        self.register_parameter("weight", nn.Parameter(torch.ones(channels)))
+        self.register_parameter("bias", nn.Parameter(torch.zeros(channels)))
         self.eps = eps
 
     def forward(self, x):
@@ -439,14 +438,14 @@ class LayerNorm2d(nn.Module):
         if torch.isnan(x).any() or torch.isinf(x).any():
             print("WARNING: NaN/Inf in LayerNorm2d input")
             x = torch.nan_to_num(x, nan=0.0, posinf=1.0, neginf=-1.0)
-        
+
         result = LayerNormFunction.apply(x, self.weight, self.bias, self.eps)
-        
+
         # 输出数值检查
         if torch.isnan(result).any() or torch.isinf(result).any():
             print("WARNING: NaN/Inf in LayerNorm2d output")
             result = torch.nan_to_num(result, nan=0.0, posinf=1.0, neginf=-1.0)
-        
+
         return result
 
 
@@ -456,86 +455,84 @@ class SimpleGate(nn.Module):
         if torch.isnan(x).any() or torch.isinf(x).any():
             print("WARNING: NaN/Inf in SimpleGate input")
             x = torch.nan_to_num(x, nan=0.0, posinf=1.0, neginf=-1.0)
-        
+
         x1, x2 = x.chunk(2, dim=1)
         result = x1 * x2
-        
+
         # 输出数值检查
         if torch.isnan(result).any() or torch.isinf(result).any():
             print("WARNING: NaN/Inf in SimpleGate output")
             result = torch.nan_to_num(result, nan=0.0, posinf=1.0, neginf=-1.0)
-        
+
         return result
 
 
 class FreMLP(nn.Module):
     def __init__(self, nc, expand=2):
-        super(FreMLP, self).__init__()
+        super().__init__()
         self.nc = nc
         self.expand = expand
-        
+
         # 使用更稳定的初始化
         self.process1 = nn.Sequential(
-            nn.Conv2d(nc, expand * nc, 1, 1, 0),
-            nn.LeakyReLU(0.1, inplace=True),
-            nn.Conv2d(expand * nc, nc, 1, 1, 0)
+            nn.Conv2d(nc, expand * nc, 1, 1, 0), nn.LeakyReLU(0.1, inplace=True), nn.Conv2d(expand * nc, nc, 1, 1, 0)
         )
-        
+
         # 初始化权重为较小的值
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='leaky_relu')
+                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="leaky_relu")
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
-    
+
     def forward(self, x):
         # 输入数值检查
         if torch.isnan(x).any() or torch.isinf(x).any():
             print("WARNING: NaN/Inf in FreMLP input")
             x = torch.nan_to_num(x, nan=0.0, posinf=1.0, neginf=-1.0)
-        
+
         original_dtype = x.dtype
         _, _, H, W = x.shape
-        
+
         # 转换为float32进行FFT
         x = x.to(torch.float32)
-        
+
         try:
             # FFT操作
-            x_freq = torch.fft.rfft2(x, norm='backward')
-            
+            x_freq = torch.fft.rfft2(x, norm="backward")
+
             # 幅度和相位
             mag = torch.abs(x_freq)
             pha = torch.angle(x_freq)
-            
+
             # 幅度裁剪，防止数值爆炸
             mag = torch.clamp(mag, min=1e-8, max=1e4)
-            
+
             # 处理幅度
             process1_float = self.process1.to(torch.float32)
             mag = process1_float(mag)
-            
+
             # 再次裁剪
             mag = torch.clamp(mag, min=1e-8, max=1e4)
-            
+
             # 恢复复数
             real = mag * torch.cos(pha)
             imag = mag * torch.sin(pha)
             x_out = torch.complex(real, imag)
-            
+
             # IFFT
-            x_out = torch.fft.irfft2(x_out, s=(H, W), norm='backward')
-            
+            x_out = torch.fft.irfft2(x_out, s=(H, W), norm="backward")
+
         except Exception as e:
             print(f"ERROR in FreMLP FFT operations: {e}")
             # 如果FFT失败，返回原始输入
             x_out = x
-        
+
         # 数值检查
         if torch.isnan(x_out).any() or torch.isinf(x_out).any():
             print("WARNING: NaN/Inf in FreMLP output")
             x_out = torch.nan_to_num(x_out, nan=0.0, posinf=1.0, neginf=-1.0)
-        
+
         return x_out.to(original_dtype)
 
 
@@ -543,7 +540,7 @@ class Branch(nn.Module):
     def __init__(self, c, DW_Expand, dilation=1):
         super().__init__()
         self.dw_channel = DW_Expand * c
-        
+
         # 添加更稳定的卷积配置
         self.branch = nn.Sequential(
             nn.Conv2d(
@@ -554,14 +551,14 @@ class Branch(nn.Module):
                 stride=1,
                 groups=self.dw_channel,
                 bias=True,
-                dilation=dilation
+                dilation=dilation,
             )
         )
-        
+
         # 稳定的权重初始化
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
 
@@ -570,26 +567,30 @@ class Branch(nn.Module):
         if torch.isnan(input).any() or torch.isinf(input).any():
             print("WARNING: NaN/Inf in Branch input")
             input = torch.nan_to_num(input, nan=0.0, posinf=1.0, neginf=-1.0)
-        
+
         result = self.branch(input)
-        
+
         if torch.isnan(result).any() or torch.isinf(result).any():
             print("WARNING: NaN/Inf in Branch output")
             result = torch.nan_to_num(result, nan=0.0, posinf=1.0, neginf=-1.0)
-        
+
         return result
 
 
 class EBlock(nn.Module):
-    def __init__(self, c, DW_Expand=2, dilations=[1], extra_depth_wise=False):
+    def __init__(self, c, DW_Expand=2, dilations=None, extra_depth_wise=False):
+        if dilations is None:
+            dilations = [1]
         super().__init__()
         self.dw_channel = DW_Expand * c
-        
+
         # 可选额外深度卷积
-        self.extra_conv = nn.Conv2d(
-            c, c, kernel_size=3, padding=1, stride=1, groups=c, bias=True, dilation=1
-        ) if extra_depth_wise else nn.Identity()
-        
+        self.extra_conv = (
+            nn.Conv2d(c, c, kernel_size=3, padding=1, stride=1, groups=c, bias=True, dilation=1)
+            if extra_depth_wise
+            else nn.Identity()
+        )
+
         # 1×1卷积
         self.conv1 = nn.Conv2d(
             in_channels=c,
@@ -599,16 +600,16 @@ class EBlock(nn.Module):
             stride=1,
             groups=1,
             bias=True,
-            dilation=1
+            dilation=1,
         )
-        
+
         # 多扩张卷积分支
         self.branches = nn.ModuleList()
         for dilation in dilations:
             self.branches.append(Branch(c, DW_Expand, dilation=dilation))
-       
+
         assert len(dilations) == len(self.branches)
-        
+
         # 空间注意力模块
         self.sca = nn.Sequential(
             nn.AdaptiveAvgPool2d(1),
@@ -620,12 +621,12 @@ class EBlock(nn.Module):
                 stride=1,
                 groups=1,
                 bias=True,
-                dilation=1
-            )
+                dilation=1,
+            ),
         )
-        
+
         self.sg1 = SimpleGate()
-        
+
         # 1×1卷积
         self.conv3 = nn.Conv2d(
             in_channels=self.dw_channel // 2,
@@ -635,25 +636,25 @@ class EBlock(nn.Module):
             stride=1,
             groups=1,
             bias=True,
-            dilation=1
+            dilation=1,
         )
-        
+
         # 第二阶段
         self.norm1 = LayerNorm2d(c)
         self.norm2 = LayerNorm2d(c)
         self.freq = FreMLP(nc=c, expand=2)
-        
+
         # 使用更小的初始值
         self.gamma = nn.Parameter(torch.zeros((1, c, 1, 1)) * 0.01, requires_grad=True)
         self.beta = nn.Parameter(torch.zeros((1, c, 1, 1)) * 0.01, requires_grad=True)
-        
+
         # 初始化所有权重
         self._initialize_weights()
 
     def _initialize_weights(self):
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='leaky_relu')
+                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="leaky_relu")
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
             elif isinstance(m, nn.BatchNorm2d):
@@ -665,67 +666,67 @@ class EBlock(nn.Module):
         if torch.isnan(inp).any() or torch.isinf(inp).any():
             print("WARNING: NaN/Inf in EBlock input")
             inp = torch.nan_to_num(inp, nan=0.0, posinf=1.0, neginf=-1.0)
-        
+
         y = inp
-        
+
         # 第一阶段
         x = self.norm1(inp)
         x = self.conv1(self.extra_conv(x))
-        
+
         z = 0
         for branch in self.branches:
             branch_output = branch(x)
             if torch.isnan(branch_output).any() or torch.isinf(branch_output).any():
                 branch_output = torch.nan_to_num(branch_output, nan=0.0, posinf=1.0, neginf=-1.0)
             z += branch_output
-        
+
         z = self.sg1(z)
         x = self.sca(z) * z
         x = self.conv3(x)
-        
+
         # 数值检查
         if torch.isnan(x).any() or torch.isinf(x).any():
             print("WARNING: NaN/Inf in EBlock spatial output")
             x = torch.nan_to_num(x, nan=0.0, posinf=1.0, neginf=-1.0)
-        
+
         y = inp + self.beta * x
 
         # 第二阶段
         x_step2 = self.norm2(y)
         x_freq = self.freq(x_step2)
-        
+
         # 数值检查
         if torch.isnan(x_freq).any() or torch.isinf(x_freq).any():
             print("WARNING: NaN/Inf in frequency output")
             x_freq = torch.nan_to_num(x_freq, nan=0.0, posinf=1.0, neginf=-1.0)
-        
+
         x = y * x_freq
         x = y + x * self.gamma
-        
+
         # 最终输出检查
         if torch.isnan(x).any() or torch.isinf(x).any():
             print("WARNING: NaN/Inf in EBlock final output")
             x = torch.nan_to_num(x, nan=0.0, posinf=1.0, neginf=-1.0)
-        
+
         return x
 
 
 if __name__ == "__main__":
-    device = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
+    device = torch.device("cuda:0" if torch.cuda.is_available() else "cpu")
 
     # 测试数值稳定性
     x = torch.randn(1, 64, 32, 32).to(device)
 
     model = EBlock(64)
     model.to(device)
-    
+
     # 前向传播测试
     with torch.no_grad():
         y = model(x)
-    
+
     print("输入特征维度：", x.shape)
     print("输出特征维度：", y.shape)
-    print("数值范围 - 输入: [{:.6f}, {:.6f}]".format(x.min().item(), x.max().item()))
-    print("数值范围 - 输出: [{:.6f}, {:.6f}]".format(y.min().item(), y.max().item()))
+    print(f"数值范围 - 输入: [{x.min().item():.6f}, {x.max().item():.6f}]")
+    print(f"数值范围 - 输出: [{y.min().item():.6f}, {y.max().item():.6f}]")
     print("NaN数量:", torch.isnan(y).sum().item())
     print("Inf数量:", torch.isinf(y).sum().item())

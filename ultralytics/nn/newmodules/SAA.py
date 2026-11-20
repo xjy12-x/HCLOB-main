@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 from torch import nn
 
-'''
+"""
 来自TETCI 2024 论文   CV任务通用           YOLOv8v10v11创新改进商品 和 即插即用模块商品在评论区
 # 即插即用注意力： SAA 自我感知注意力           
 提供二次创新  SCGA 自我感知协调注意力 效果优于SAA,可以直接拿去冲SCI一区  
@@ -30,7 +30,7 @@ TSA 首先通过线性变换生成查询 (Q)、键 (K) 和值 (V) 的特征表�
 GSA 通过对特征图进行卷积和重构，生成位置相关的注意力图，进而与输入特征结合，形成强化后的特征。
 
 适用于：医学图像分割，目标检测，语义分割，图像增强，暗光增强，遥感图像任务等所有计算机视觉CV任务通用注意力模块
-'''
+"""
 # class PAM_Module(nn.Module):
 #     """空间注意力模块"""
 #     def __init__(self, in_dim):
@@ -171,26 +171,25 @@ GSA 通过对特征图进行卷积和重构，生成位置相关的注意力图�
 #         self.tsa = ScaledDotProductAttention()
 #         self.ca = DChannelAttention(in_channels)
 
-        
+
 #     def forward(self, x):
 #         # 保存输入用于残差连接
 #         identity = x
-        
+
 #         # 1. 通道注意力
 #         ca_weight = self.ca(x)
 #         x_ca = x * ca_weight
-        
+
 #         # 2. 空间注意力
 #         x_gsa = self.gsa(x_ca)
-        
+
 #         # 3. Transformer自注意力
 #         x_tsa = self.tsa(x_ca)
-        
+
 #         # 4. 残差连接
 #         out = x_gsa + x_tsa+identity
-        
 
-        
+
 #         return out
 
 # # 输入 N C H W,  输出 N C H W
@@ -211,16 +210,16 @@ GSA 通过对特征图进行卷积和重构，生成位置相关的注意力图�
 
 # class ScaledDotProductAttention(nn.Module):
 #     '''自注意力模块 - 修复版，避免显存爆炸'''
-    
+
 #     def __init__(self, temperature=512, attn_dropout=0.1, num_heads=8):
 #         super().__init__()
 #         self.temperature = temperature ** 0.5
 #         self.dropout = nn.Dropout(attn_dropout)
 #         self.num_heads = num_heads
-    
+
 #     def forward(self, x, mask=None):
 #         m_batchsize, d, height, width = x.size()
-        
+
 #         # 方法1：空间下采样（推荐）
 #         # 将特征图下采样以减少计算量
 #         if height * width > 4096:  # 如果特征图太大
@@ -231,19 +230,19 @@ GSA 通过对特征图进行卷积和重构，生成位置相关的注意力图�
 #         else:
 #             x_down = x
 #             h_down, w_down = height, width
-        
+
 #         # 方法2：使用多头注意力减少矩阵大小
 #         if self.num_heads > 1:
 #             head_dim = d // self.num_heads
 #             q = x_down.view(m_batchsize, self.num_heads, head_dim, -1)
 #             k = x_down.view(m_batchsize, self.num_heads, head_dim, -1)
 #             v = x_down.view(m_batchsize, self.num_heads, head_dim, -1)
-            
+
 #             attn = torch.matmul(q / self.temperature, k.transpose(-2, -1))
-            
+
 #             if mask is not None:
 #                 attn = attn.masked_fill(mask == 0, -1e9)
-            
+
 #             attn = self.dropout(F.softmax(attn, dim=-1))
 #             output = torch.matmul(attn, v)
 #             output = output.view(m_batchsize, d, h_down, w_down)
@@ -252,22 +251,22 @@ GSA 通过对特征图进行卷积和重构，生成位置相关的注意力图�
 #             q = x_down.view(m_batchsize, d, -1)
 #             k = x_down.view(m_batchsize, d, -1).permute(0, 2, 1)
 #             v = x_down.view(m_batchsize, d, -1)
-            
+
 #             attn = torch.matmul(q / self.temperature, k)
-            
+
 #             if mask is not None:
 #                 attn = attn.masked_fill(mask == 0, -1e9)
-            
+
 #             attn = self.dropout(F.softmax(attn, dim=-1))
 #             output = torch.matmul(attn, v)
 #             output = output.view(m_batchsize, d, h_down, w_down)
-        
+
 #         # 如果下采样了，再上采样回原尺寸
 #         if height != h_down or width != w_down:
 #             output = F.interpolate(output, size=(height, width), mode='bilinear', align_corners=False)
-        
+
 #         return output
-    
+
 
 # class DChannelAttention(nn.Module):
 #     def __init__(self, in_planes, ratio=16, alpha=0.5):
@@ -316,17 +315,17 @@ GSA 通过对特征图进行卷积和重构，生成位置相关的注意力图�
 #         super(PAM_Module, self).__init__()
 #         self.chanel_in = in_dim
 #         mid_channels = max(8, in_dim // reduction)
-        
+
 #         self.query_conv = nn.Conv2d(in_channels=in_dim, out_channels=mid_channels, kernel_size=1)
 #         self.key_conv = nn.Conv2d(in_channels=in_dim, out_channels=mid_channels, kernel_size=1)
 #         self.value_conv = nn.Conv2d(in_channels=in_dim, out_channels=in_dim, kernel_size=1)
-        
+
 #         self.gamma = nn.Parameter(torch.zeros(1))
 #         self.softmax = nn.Softmax(dim=-1)
-        
+
 #     def forward(self, x):
 #         B, C, H, W = x.shape
-        
+
 #         # 空间下采样以减少计算量
 #         if H * W > 4096:
 #             target_h, target_w = max(32, H // 4), max(32, W // 4)
@@ -334,20 +333,20 @@ GSA 通过对特征图进行卷积和重构，生成位置相关的注意力图�
 #         else:
 #             x_down = x
 #             target_h, target_w = H, W
-        
+
 #         proj_query = self.query_conv(x_down).view(B, -1, target_h * target_w).permute(0, 2, 1)
 #         proj_key = self.key_conv(x_down).view(B, -1, target_h * target_w)
-        
+
 #         energy = torch.bmm(proj_query, proj_key)
 #         attention = self.softmax(energy)
 #         proj_value = self.value_conv(x_down).view(B, -1, target_h * target_w)
-        
+
 #         out = torch.bmm(proj_value, attention.permute(0, 2, 1))
 #         out = out.view(B, C, target_h, target_w)
-        
+
 #         if H != target_h or W != target_w:
 #             out = F.interpolate(out, size=(H, W), mode='bilinear', align_corners=False)
-        
+
 #         out = self.gamma * out + x
 #         return out
 # class SAA(nn.Module):
@@ -365,41 +364,40 @@ GSA 通过对特征图进行卷积和重构，生成位置相关的注意力图�
 #     def __init__(self, in_channels, reduction=16):
 #         super(SCGA, self).__init__()
 #         self.in_channels = in_channels
-        
+
 #         # 通道注意力
 #         self.ca = ChannelAttention(in_channels, ratio=reduction)
-        
+
 #         # 简化空间注意力
 #         self.conv1 = nn.Conv2d(in_channels, in_channels // reduction, 1, bias=False)
 #         self.conv2 = nn.Conv2d(in_channels // reduction, in_channels, 1, bias=False)
 #         self.sigmoid = nn.Sigmoid()
-        
+
 #         # 简化Transformer注意力
 #         self.transform_conv = nn.Conv2d(in_channels, in_channels, 1, bias=False)
-        
+
 #         # 可学习的融合权重
 #         self.alpha = nn.Parameter(torch.ones(1))
 #         self.beta = nn.Parameter(torch.ones(1))
-        
+
 #     def forward(self, x):
 #         # 1. 通道注意力
 #         ca_weight = self.ca(x)
 #         x_ca = x * ca_weight
-        
+
 #         # 2. 简化空间注意力
 #         spatial_avg = F.adaptive_avg_pool2d(x_ca, 1)
 #         spatial_weight = self.conv2(F.relu(self.conv1(spatial_avg)))
 #         spatial_weight = self.sigmoid(spatial_weight)
 #         x_spatial = x_ca * spatial_weight
-        
+
 #         # 3. 简化Transformer自注意力
 #         x_transform = self.transform_conv(x_spatial)
-        
+
 #         # 4. 残差融合
 #         out = x + self.alpha * x_spatial + self.beta * x_transform
-        
-#         return out
 
+#         return out
 
 
 # class DSCGA(nn.Module):
@@ -427,7 +425,7 @@ GSA 通过对特征图进行卷积和重构，生成位置相关的注意力图�
 #     output = scga(input)
 #     print("SCGA_Lite input.shape:", input.shape)
 #     print("SCGA_Lite output.shape:", output.shape)
-    
+
 #     # 测试不同尺寸
 #     test_sizes = [(64, 64), (128, 128), (256, 256), (640, 640)]
 #     for size in test_sizes:
@@ -439,54 +437,52 @@ GSA 通过对特征图进行卷积和重构，生成位置相关的注意力图�
 #             print(f"✗ 测试失败：输入尺寸 {size}, 错误：{e}")
 
 
-
-import torch
-import torch.nn.functional as F
-from torch import nn
 import warnings
-warnings.filterwarnings('ignore')
+
+warnings.filterwarnings("ignore")
+
 
 class ScaledDotProductAttention(nn.Module):
-    '''自注意力模块 - 修复版，避免显存爆炸和数值不稳定'''
-    
+    """自注意力模块 - 修复版，避免显存爆炸和数值不稳定."""
+
     def __init__(self, temperature=512, attn_dropout=0.1, num_heads=8, eps=1e-8):
         super().__init__()
-        self.temperature = temperature ** 0.5
+        self.temperature = temperature**0.5
         self.dropout = nn.Dropout(attn_dropout)
         self.num_heads = num_heads
         self.eps = eps
-        
+
     def forward(self, x, mask=None):
         m_batchsize, d, height, width = x.size()
-        
+
         # 方法1：空间下采样（推荐）
         if height * width > 4096:  # 如果特征图太大
             target_size = (32, 32) if height >= 64 else (16, 16)
-            x_down = F.interpolate(x, size=target_size, mode='bilinear', align_corners=False)
+            x_down = F.interpolate(x, size=target_size, mode="bilinear", align_corners=False)
             d, h_down, w_down = d, target_size[0], target_size[1]
         else:
             x_down = x
             h_down, w_down = height, width
-        
+
         # 方法2：使用多头注意力减少矩阵大小
         if self.num_heads > 1:
             head_dim = d // self.num_heads
             q = x_down.view(m_batchsize, self.num_heads, head_dim, -1)
             k = x_down.view(m_batchsize, self.num_heads, head_dim, -1)
             v = x_down.view(m_batchsize, self.num_heads, head_dim, -1)
-            
+
             # 计算注意力分数
             attn = torch.matmul(q / self.temperature, k.transpose(-2, -1))
-            
+
             if mask is not None:
                 attn = attn.masked_fill(mask == 0, -1e4)
-            
+
             # 数值稳定的softmax
             attn_max = attn.max(dim=-1, keepdim=True)[0]
             attn_exp = torch.exp(attn - attn_max)
             attn_sum = attn_exp.sum(dim=-1, keepdim=True) + self.eps
             attn = attn_exp / attn_sum
-            
+
             attn = self.dropout(attn)
             output = torch.matmul(attn, v)
             output = output.view(m_batchsize, d, h_down, w_down)
@@ -495,93 +491,95 @@ class ScaledDotProductAttention(nn.Module):
             q = x_down.view(m_batchsize, d, -1)
             k = x_down.view(m_batchsize, d, -1).permute(0, 2, 1)
             v = x_down.view(m_batchsize, d, -1)
-            
+
             attn = torch.matmul(q / self.temperature, k)
-            
+
             if mask is not None:
                 attn = attn.masked_fill(mask == 0, -1e4)
-            
+
             # 数值稳定的softmax
             attn_max = attn.max(dim=-1, keepdim=True)[0]
             attn_exp = torch.exp(attn - attn_max)
             attn_sum = attn_exp.sum(dim=-1, keepdim=True) + self.eps
             attn = attn_exp / attn_sum
-            
+
             attn = self.dropout(attn)
             output = torch.matmul(attn, v)
             output = output.view(m_batchsize, d, h_down, w_down)
-        
+
         # 如果下采样了，再上采样回原尺寸
         if height != h_down or width != w_down:
-            output = F.interpolate(output, size=(height, width), mode='bilinear', align_corners=False)
-        
+            output = F.interpolate(output, size=(height, width), mode="bilinear", align_corners=False)
+
         return output
+
 
 class DChannelAttention(nn.Module):
     def __init__(self, in_planes, ratio=16, alpha=0.5, eps=1e-8):
-        super(DChannelAttention, self).__init__()
+        super().__init__()
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
         self.max_pool = nn.AdaptiveMaxPool2d(1)
         self.alpha = alpha
         self.eps = eps
-        
+
         self.fc1 = nn.Conv2d(in_planes, in_planes // ratio, 1, bias=True)
         self.relu1 = nn.ReLU()
         self.fc2 = nn.Conv2d(in_planes // ratio, in_planes, 1, bias=True)
         self.sigmoid = nn.Sigmoid()
-        
+
         # 初始化权重
         self._init_weights()
-    
+
     def _init_weights(self):
-        """更好的权重初始化"""
+        """更好的权重初始化."""
         for m in self.modules():
             if isinstance(m, nn.Conv2d):
-                nn.init.kaiming_normal_(m.weight, mode='fan_out', nonlinearity='relu')
+                nn.init.kaiming_normal_(m.weight, mode="fan_out", nonlinearity="relu")
                 if m.bias is not None:
                     nn.init.constant_(m.bias, 0)
-    
+
     def forward(self, x):
         # 1. 池化操作
         avg_pool = self.avg_pool(x)
         max_pool = self.max_pool(x)
-        
+
         # 数值稳定性检查
         if torch.isnan(avg_pool).any() or torch.isinf(avg_pool).any():
             avg_pool = torch.nan_to_num(avg_pool, nan=0.0, posinf=1.0, neginf=-1.0)
         if torch.isnan(max_pool).any() or torch.isinf(max_pool).any():
             max_pool = torch.nan_to_num(max_pool, nan=0.0, posinf=1.0, neginf=-1.0)
-        
+
         # 混合池化
         mix_pool = self.alpha * avg_pool + (1 - self.alpha) * max_pool
-        
+
         # 2. 计算通道注意力
         avg_out = self.fc2(self.relu1(self.fc1(avg_pool)))
         max_out = self.fc2(self.relu1(self.fc1(max_pool)))
         mix_out = self.fc2(self.relu1(self.fc1(mix_pool)))
-        
+
         # 3. 数值稳定性处理
         out_sum = avg_out + max_out + mix_out
-        
+
         # 检查并修复NaN/Inf
         if torch.isnan(out_sum).any() or torch.isinf(out_sum).any():
             out_sum = torch.nan_to_num(out_sum, nan=0.0, posinf=1.0, neginf=-1.0)
-        
+
         # 4. 应用sigmoid
         out_pool = self.sigmoid(out_sum)
-        
+
         # 5. 返回加权特征
         result = x * out_pool
-        
+
         # 最终检查
         if torch.isnan(result).any() or torch.isinf(result).any():
             result = torch.nan_to_num(result, nan=0.0, posinf=1.0, neginf=-1.0)
-        
+
         return result
-    
+
+
 class ChannelAttention(nn.Module):
     def __init__(self, in_planes, ratio=16):
-        super(ChannelAttention, self).__init__()
+        super().__init__()
         self.avg_pool = nn.AdaptiveAvgPool2d(1)
         self.max_pool = nn.AdaptiveMaxPool2d(1)
 
@@ -596,109 +594,117 @@ class ChannelAttention(nn.Module):
         out = avg_out + max_out
         return self.sigmoid(out)
 
+
 class PAM_Module(nn.Module):
-    """空间注意力模块 - 修复版，数值稳定"""
+    """空间注意力模块 - 修复版，数值稳定."""
+
     def __init__(self, in_dim, reduction=8, eps=1e-8):
-        super(PAM_Module, self).__init__()
+        super().__init__()
         self.chanel_in = in_dim
         mid_channels = max(8, in_dim // reduction)
-        
+
         self.query_conv = nn.Conv2d(in_channels=in_dim, out_channels=mid_channels, kernel_size=1)
         self.key_conv = nn.Conv2d(in_channels=in_dim, out_channels=mid_channels, kernel_size=1)
         self.value_conv = nn.Conv2d(in_channels=in_dim, out_channels=in_dim, kernel_size=1)
-        
+
         self.gamma = nn.Parameter(torch.ones(1) * 0.1)  # 从0改为0.1
         self.softmax = nn.Softmax(dim=-1)
         self.eps = eps
-        
+
     def forward(self, x):
         B, C, H, W = x.shape
-        
+
         # 空间下采样以减少计算量
         if H * W > 4096:
             target_h, target_w = max(32, H // 4), max(32, W // 4)
-            x_down = F.interpolate(x, size=(target_h, target_w), mode='bilinear', align_corners=False)
+            x_down = F.interpolate(x, size=(target_h, target_w), mode="bilinear", align_corners=False)
         else:
             x_down = x
             target_h, target_w = H, W
-        
+
         proj_query = self.query_conv(x_down).view(B, -1, target_h * target_w).permute(0, 2, 1)
         proj_key = self.key_conv(x_down).view(B, -1, target_h * target_w)
-        
+
         # 计算注意力能量
         energy = torch.bmm(proj_query, proj_key)
-        
+
         # 数值稳定的softmax
         energy_max = energy.max(dim=-1, keepdim=True)[0]
         energy_exp = torch.exp(energy - energy_max)
         energy_sum = energy_exp.sum(dim=-1, keepdim=True) + self.eps
         attention = energy_exp / energy_sum
-        
+
         proj_value = self.value_conv(x_down).view(B, -1, target_h * target_w)
-        
+
         out = torch.bmm(proj_value, attention.permute(0, 2, 1))
         out = out.view(B, C, target_h, target_w)
-        
+
         if H != target_h or W != target_w:
-            out = F.interpolate(out, size=(H, W), mode='bilinear', align_corners=False)
-        
+            out = F.interpolate(out, size=(H, W), mode="bilinear", align_corners=False)
+
         out = self.gamma * out + x
-        
+
         # 数值稳定性检查
         if torch.isnan(out).any() or torch.isinf(out).any():
             out = torch.nan_to_num(out, nan=0.0, posinf=1.0, neginf=-1.0)
-        
+
         return out
-    
+
+
 class SAA(nn.Module):
     def __init__(self, in_channels):
-        super(SAA, self).__init__()
+        super().__init__()
         self.gsa = PAM_Module(in_dim=in_channels)
         self.tsa = ScaledDotProductAttention()
+
     def forward(self, x):
         x1 = self.gsa(x)
         x2 = self.gsa(x)
         out = x1 + x2
         return out
+
+
 class SCGA(nn.Module):
-    """轻量级SCGA，显存友好版"""
+    """轻量级SCGA，显存友好版."""
+
     def __init__(self, in_channels, reduction=16):
-        super(SCGA, self).__init__()
+        super().__init__()
         self.in_channels = in_channels
-        
+
         # 通道注意力
         self.ca = ChannelAttention(in_channels, ratio=reduction)
-        
+
         # 简化空间注意力
         self.conv1 = nn.Conv2d(in_channels, in_channels // reduction, 1, bias=False)
         self.conv2 = nn.Conv2d(in_channels // reduction, in_channels, 1, bias=False)
         self.sigmoid = nn.Sigmoid()
-        
+
         # 简化Transformer注意力
         self.transform_conv = nn.Conv2d(in_channels, in_channels, 1, bias=False)
-        
+
         # 可学习的融合权重
         self.alpha = nn.Parameter(torch.ones(1))
         self.beta = nn.Parameter(torch.ones(1))
-        
+
     def forward(self, x):
         # 1. 通道注意力
         ca_weight = self.ca(x)
         x_ca = x * ca_weight
-        
+
         # 2. 简化空间注意力
         spatial_avg = F.adaptive_avg_pool2d(x_ca, 1)
         spatial_weight = self.conv2(F.relu(self.conv1(spatial_avg)))
         spatial_weight = self.sigmoid(spatial_weight)
         x_spatial = x_ca * spatial_weight
-        
+
         # 3. 简化Transformer自注意力
         x_transform = self.transform_conv(x_spatial)
-        
+
         # 4. 残差融合
         out = x + self.alpha * x_spatial + self.beta * x_transform
-        
+
         return out
+
 
 # class DSCGA(nn.Module):
 #     def __init__(self, in_channels, reduction=16, eps=1e-8):
@@ -707,32 +713,33 @@ class SCGA(nn.Module):
 #         self.tsa = ScaledDotProductAttention(eps=eps)
 #         self.ca = DChannelAttention(in_channels, eps=eps)
 #         self.eps = eps
-        
+
 #     def forward(self, x):
 #         # 保存输入用于残差连接
 #         identity = x
-        
+
 #         # 1. 通道注意力
 #         x_ca = self.ca(x)
-        
+
 #         # 2. 空间注意力
 #         x_gsa = self.gsa(x_ca)
-        
+
 #         # 3. Transformer自注意力
 #         x_tsa = self.tsa(x_ca)
-        
+
 #         # 4. 残差连接
 #         out = x_gsa + x_tsa+x_ca
-        
+
 #         # 数值稳定性检查
 #         if torch.isnan(out).any() or torch.isinf(out).any():
 #             out = torch.nan_to_num(out, nan=0.0, posinf=1.0, neginf=-1.0)
-        
+
 #         return out
+
 
 class DSCGA(nn.Module):
     def __init__(self, in_channels, reduction=16):
-        super(DSCGA, self).__init__()
+        super().__init__()
         self.in_channels = in_channels
         self.ca = DChannelAttention(in_channels, ratio=reduction)
         self.conv1 = nn.Conv2d(in_channels, in_channels // reduction, 1, bias=False)
@@ -754,31 +761,30 @@ class DSCGA(nn.Module):
         return out
 
 
-
 # 测试修复
-if __name__ == '__main__':
+if __name__ == "__main__":
     # 测试不同输入尺寸
     test_sizes = [(64, 64), (128, 128), (256, 256), (640, 640)]
-    
+
     for size in test_sizes:
         print(f"\n测试输入尺寸: {size}")
         input = torch.rand(2, 64, size[0], size[1])
-        
+
         # 测试DSCGA
         try:
             dscga = DSCGA(in_channels=64)
             output = dscga(input)
-            
+
             # 检查输出
             has_nan = torch.isnan(output).any()
             has_inf = torch.isinf(output).any()
             max_val = output.max().item()
             min_val = output.min().item()
-            
-            print(f"  DSCGA: 通过")
+
+            print("  DSCGA: 通过")
             print(f"    输出形状: {output.shape}")
             print(f"    NaN: {has_nan}, Inf: {has_inf}")
             print(f"    值范围: [{min_val:.4f}, {max_val:.4f}]")
-            
+
         except Exception as e:
             print(f"  DSCGA: 失败 - {e}")

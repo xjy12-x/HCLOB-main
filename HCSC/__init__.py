@@ -1,19 +1,13 @@
-"""HCSC对比学习模块"""
+"""HCSC对比学习模块."""
 
-from .mainjoint import (
-    hcsc_train,
-    hcsc_train_loader, 
-    hcsc_args,
-    hcsc_model,
-    hcsc_optimizer
-)
+from .mainjoint import hcsc_args, hcsc_model, hcsc_optimizer, hcsc_train, hcsc_train_loader
 
 __all__ = [
-    'hcsc_train',
-    'hcsc_train_loader', 
-    'hcsc_args',
-    'hcsc_model', 
-    'hcsc_optimizer',
-    'criterion',
-    'cluster_result',
+    "cluster_result",
+    "criterion",
+    "hcsc_args",
+    "hcsc_model",
+    "hcsc_optimizer",
+    "hcsc_train",
+    "hcsc_train_loader",
 ]
